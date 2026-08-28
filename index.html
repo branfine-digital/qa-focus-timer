@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QA Focus Timer</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Entry screen: pick name + emoji before joining the room -->
+  <div id="entry-screen" class="screen">
+    <div class="entry-card">
+      <h1>Join the focus room</h1>
+      <p class="subtitle">Pick an emoji and a name so your team can see you're here.</p>
+
+      <div id="emoji-grid" class="emoji-grid"></div>
+
+      <input id="name-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
+
+      <button id="join-btn" class="primary-btn" disabled>Join room</button>
+      <p id="entry-error" class="entry-error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Main room screen -->
+  <div id="room-screen" class="screen" hidden>
+
+    <header class="room-header">
+      <h1>QA Focus Room</h1>
+      <div id="presence-bar" class="presence-bar" aria-label="People in the room"></div>
+    </header>
+
+    <main class="room-main">
+
+      <!-- Idle / picker state -->
+      <section id="picker-panel" class="panel">
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="work">Work</button>
+          <button class="mode-tab" data-mode="break">Break</button>
+        </div>
+
+        <div id="work-bubbles" class="duration-bubbles">
+          <button class="bubble" data-minutes="25">25<span>min</span></button>
+          <button class="bubble" data-minutes="45">45<span>min</span></button>
+          <button class="bubble" data-minutes="30">30<span>min</span></button>
+          <button class="bubble" data-minutes="10">10<span>min</span></button>
+        </div>
+
+        <div id="break-bubbles" class="duration-bubbles" hidden>
+          <button class="bubble" data-minutes="10">10<span>min</span></button>
+          <button class="bubble" data-minutes="15">15<span>min</span></button>
+          <button class="bubble" data-minutes="5">5<span>min</span></button>
+        </div>
+
+        <div class="custom-row">
+          <input id="custom-minutes" type="number" min="1" max="240" placeholder="Custom" />
+          <span>minutes</span>
+          <button id="custom-start-btn" class="secondary-btn">Start</button>
+        </div>
+      </section>
+
+      <!-- Running countdown state -->
+      <section id="countdown-panel" class="panel" hidden>
+        <p id="countdown-mode-label" class="countdown-mode-label">Work session</p>
+        <div id="countdown-display" class="countdown-display">25:00</div>
+        <p id="countdown-started-by" class="countdown-started-by"></p>
+      </section>
+
+    </main>
+
+    <!-- Full-screen "time's up" overlay, dismissed by a click anywhere -->
+    <div id="done-overlay" class="done-overlay" hidden>
+      <div class="done-content">
+        <div class="done-emoji">⏰</div>
+        <div class="done-text">Time's up!</div>
+        <div class="done-hint">Click anywhere to reset the room</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
