@@ -326,7 +326,15 @@
       header_text: headerText,
       updated_at: now.toISOString(),
     }).eq("id", 1);
-    if (error) console.error("Failed to start timer:", error);
+    if (error) {
+      console.error("Failed to start timer:", error);
+      // The morph animation already optimistically faded the picker out --
+      // if the write failed, nothing will ever arrive over realtime to
+      // restore it, so put the picker back ourselves instead of leaving the
+      // room stuck on a blank screen until someone refreshes.
+      resetMorphArtifacts();
+      showPicker();
+    }
   }
 
   async function resetRoom() {
