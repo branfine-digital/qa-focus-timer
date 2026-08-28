@@ -9,6 +9,37 @@
   const IDENTITY_KEY = "qa_focus_identity";
   const CLIENT_ID_KEY = "qa_focus_client_id";
 
+  // Rotating headers -- one is picked at random whenever a timer is started,
+  // and stored on the shared row so the whole room sees the same line.
+  const WORK_HEADERS = [
+    "Time to lock in",
+    "Deploying focus mode",
+    "No bugs, just brains",
+    "Heads down, tabs closed",
+    "Sprint mode: engaged",
+    "QA-ing your own productivity",
+    "Zero known issues with this focus block",
+    "Currently in a stable build of you",
+    "Focus.exe is running",
+    "Building, not browsing",
+  ];
+  const BREAK_HEADERS = [
+    "Now testing: your patience",
+    "On break. Do not deploy to live page.",
+    "Refilling coffee, not tasks",
+    "Status: away, results pending",
+    "Regression testing your relaxation skills",
+    "Snack break: additional steps optional",
+    "Stretch it like a Sprint MVP™",
+    "Pending human, please wait",
+    "Running a break on yourself",
+    "Currently out of office (mentally)",
+  ];
+
+  function pickRandom(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
   // ---------- DOM ----------
   const entryScreen = document.getElementById("entry-screen");
   const roomScreen = document.getElementById("room-screen");
@@ -223,7 +254,7 @@
     doneOverlay.hidden = true;
     countdownPanel.hidden = false;
     countdownPanel.classList.toggle("mode-break", row.mode === "break");
-    countdownModeLabel.textContent = row.mode === "work" ? "Work session" : "Break";
+    countdownModeLabel.textContent = row.header_text || (row.mode === "work" ? "Work session" : "Break");
     countdownStartedBy.textContent = row.started_by ? "Started by " + row.started_by : "";
   }
 
@@ -285,12 +316,14 @@
     if (!minutes || minutes <= 0) return;
     const now = new Date();
     const endsAt = new Date(now.getTime() + minutes * 60 * 1000);
+    const headerText = pickRandom(mode === "work" ? WORK_HEADERS : BREAK_HEADERS);
     const { error } = await sb.from("timer_state").update({
       mode,
       duration_sec: minutes * 60,
       started_at: now.toISOString(),
       ends_at: endsAt.toISOString(),
       started_by: identity.emoji + " " + identity.name,
+      header_text: headerText,
       updated_at: now.toISOString(),
     }).eq("id", 1);
     if (error) console.error("Failed to start timer:", error);
@@ -303,6 +336,7 @@
       started_at: null,
       ends_at: null,
       started_by: null,
+      header_text: null,
       updated_at: new Date().toISOString(),
     }).eq("id", 1);
     if (error) console.error("Failed to reset room:", error);
@@ -324,6 +358,15 @@
       btn.classList.remove("squish");
       void btn.offsetWidth; // restart the squish animation if clicked again quickly
       btn.classList.add("squish");
+      btn.addEventListener(
+        "animationend",
+        (e) => {
+          // Only clear our own squish animation -- leave the idle-bob animation
+          // (which fires its own animationend on every loop) alone, and make
+          // sure the bubble goes right back to bobbing forever, clicked or not.
+          if (e.animationName === "bubble-squish") btn.classList.remove("squish");
+        }
+      );
       morphBubbleIntoCountdown(btn);
       startTimer(activeMode, minutes);
     });
