@@ -69,7 +69,7 @@
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
   countdownRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
   countdownRingProgress.style.strokeDashoffset = "0";
-  let morphSourceBubble = null;
+  let activeGhost = null;
 
   // ---------- State ----------
   let selectedEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
@@ -175,12 +175,6 @@
   }
 
   // ---------- Room screen ----------
-  function replayEntrance(el) {
-    el.style.animation = "none";
-    void el.offsetWidth; // force reflow
-    el.style.animation = "";
-  }
-
   function renderPresence(state) {
     presenceBar.innerHTML = "";
     Object.values(state).forEach((entries) => {
@@ -200,18 +194,16 @@
     return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
   }
 
-  function resetMorphArtifacts() {
-    pickerPanel.classList.remove("panel-fade-out");
-    if (morphSourceBubble) {
-      morphSourceBubble.style.visibility = "";
-      morphSourceBubble = null;
-    }
-  }
+  // The picker/countdown swap itself is instant (no fade or hide delay --
+  // that's what was causing the "empty box, then a pause" feeling). This
+  // ghost is a purely decorative circle that visually grows from the
+  // clicked bubble's spot into the countdown panel's spot and fades out,
+  // papering over that instant swap so it *looks* like the bubble morphed
+  // into the countdown rather than an abrupt cut.
+  function morphBubbleIntoCountdown(startRect, background) {
+    const endRect = countdownPanel.getBoundingClientRect();
 
-  function morphBubbleIntoCountdown(bubbleEl) {
-    const startRect = bubbleEl.getBoundingClientRect();
-    const endRect = pickerPanel.getBoundingClientRect();
-    const computed = getComputedStyle(bubbleEl);
+    if (activeGhost) activeGhost.remove();
 
     const ghost = document.createElement("div");
     ghost.className = "morph-ghost";
@@ -221,35 +213,31 @@
       width: startRect.width + "px",
       height: startRect.height + "px",
       borderRadius: "999px",
-      background: computed.backgroundImage !== "none" ? computed.backgroundImage : computed.backgroundColor,
+      background,
     });
     document.body.appendChild(ghost);
-
-    morphSourceBubble = bubbleEl;
-    bubbleEl.style.visibility = "hidden";
-    pickerPanel.classList.add("panel-fade-out");
+    activeGhost = ghost;
 
     const anim = ghost.animate(
       [
-        { left: startRect.left + "px", top: startRect.top + "px", width: startRect.width + "px", height: startRect.height + "px", borderRadius: "999px" },
-        { left: endRect.left + "px", top: endRect.top + "px", width: endRect.width + "px", height: endRect.height + "px", borderRadius: "28px" },
+        { left: startRect.left + "px", top: startRect.top + "px", width: startRect.width + "px", height: startRect.height + "px", borderRadius: "999px", opacity: 1 },
+        { left: endRect.left + "px", top: endRect.top + "px", width: endRect.width + "px", height: endRect.height + "px", borderRadius: "28px", opacity: 0 },
       ],
-      { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" }
+      { duration: 380, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" }
     );
-    anim.onfinish = () => ghost.remove();
+    anim.onfinish = () => {
+      ghost.remove();
+      if (activeGhost === ghost) activeGhost = null;
+    };
   }
 
   function showPicker() {
-    resetMorphArtifacts();
     doneOverlay.hidden = true;
     countdownPanel.hidden = true;
     pickerPanel.hidden = false;
-    replayEntrance(pickerPanel);
-    document.querySelectorAll(".bubble").forEach(replayEntrance);
   }
 
   function showCountdown(row) {
-    resetMorphArtifacts();
     pickerPanel.hidden = true;
     doneOverlay.hidden = true;
     countdownPanel.hidden = false;
@@ -312,27 +300,37 @@
     tickTimer = setInterval(tick, 250);
   }
 
-  async function startTimer(mode, minutes) {
-    if (!minutes || minutes <= 0) return;
+  // Building the payload once and reusing it for both the instant local
+  // preview and the real database write guarantees they show the exact same
+  // end time and header line -- no mismatch to reconcile when realtime
+  // confirms it a moment later.
+  function buildStartPayload(mode, minutes) {
     const now = new Date();
     const endsAt = new Date(now.getTime() + minutes * 60 * 1000);
-    const headerText = pickRandom(mode === "work" ? WORK_HEADERS : BREAK_HEADERS);
-    const { error } = await sb.from("timer_state").update({
+    return {
       mode,
       duration_sec: minutes * 60,
       started_at: now.toISOString(),
       ends_at: endsAt.toISOString(),
       started_by: identity.emoji + " " + identity.name,
-      header_text: headerText,
-      updated_at: now.toISOString(),
+      header_text: pickRandom(mode === "work" ? WORK_HEADERS : BREAK_HEADERS),
+    };
+  }
+
+  async function startTimer(payload) {
+    const { error } = await sb.from("timer_state").update({
+      ...payload,
+      updated_at: new Date().toISOString(),
     }).eq("id", 1);
     if (error) {
       console.error("Failed to start timer:", error);
-      // The morph animation already optimistically faded the picker out --
-      // if the write failed, nothing will ever arrive over realtime to
-      // restore it, so put the picker back ourselves instead of leaving the
-      // room stuck on a blank screen until someone refreshes.
-      resetMorphArtifacts();
+      // The countdown was already shown optimistically -- if the write
+      // failed, nothing will ever arrive over realtime to correct it, so put
+      // the picker back ourselves instead of leaving the room stuck.
+      if (activeGhost) {
+        activeGhost.remove();
+        activeGhost = null;
+      }
       showPicker();
     }
   }
@@ -375,8 +373,19 @@
           if (e.animationName === "bubble-squish") btn.classList.remove("squish");
         }
       );
-      morphBubbleIntoCountdown(btn);
-      startTimer(activeMode, minutes);
+
+      // Capture the bubble's on-screen spot and look *before* anything else
+      // changes, then show the countdown immediately using locally-known
+      // values -- no waiting on the network round trip before the next
+      // screen appears. The ghost animation papers over the instant swap.
+      const startRect = btn.getBoundingClientRect();
+      const computed = getComputedStyle(btn);
+      const ghostBackground = computed.backgroundImage !== "none" ? computed.backgroundImage : computed.backgroundColor;
+
+      const payload = buildStartPayload(activeMode, minutes);
+      applyTimerState(payload);
+      morphBubbleIntoCountdown(startRect, ghostBackground);
+      startTimer(payload);
     });
   });
 
@@ -386,11 +395,14 @@
       customMinutesInput.focus();
       return;
     }
-    startTimer(activeMode, minutes);
+    const payload = buildStartPayload(activeMode, minutes);
+    applyTimerState(payload);
+    startTimer(payload);
     customMinutesInput.value = "";
   });
 
   doneOverlay.addEventListener("click", () => {
+    applyTimerState({ mode: "idle" });
     resetRoom();
   });
 
@@ -399,6 +411,7 @@
   // returns to the picker, with no chime since it wasn't a natural finish.
   endTimerBtn.addEventListener("click", (event) => {
     event.stopPropagation();
+    applyTimerState({ mode: "idle" });
     resetRoom();
   });
 

@@ -303,11 +303,7 @@ body {
   position: fixed;
   z-index: 60;
   pointer-events: none;
-  will-change: left, top, width, height, border-radius;
-}
-.panel-fade-out { animation: panel-fade-out 0.18s ease forwards; }
-@keyframes panel-fade-out {
-  to { opacity: 0; transform: scale(0.97); }
+  will-change: left, top, width, height, border-radius, opacity;
 }
 
 .end-timer-btn {
