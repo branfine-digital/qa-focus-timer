@@ -18,20 +18,24 @@ Supabase (already created: project `qa-focus-timer`).
 
 ## 2. Push to GitHub
 
-From this folder:
+This folder is already a git repo with everything committed, so you just need to
+create an empty repo on GitHub and point this one at it.
+
+1. Go to github.com (signed in) and click the **+** in the top-right corner → **New repository**.
+2. Give it a name, e.g. `qa-focus-timer`. Public or private is up to you.
+3. Leave every checkbox unchecked — **do not** add a README, .gitignore, or license. This folder already has those files, and checking them creates a conflict when you push.
+4. Click **Create repository**.
+5. GitHub will show you a repo URL like `https://github.com/<your-username>/qa-focus-timer.git` — copy it.
+6. In Terminal, run:
 
 ```
-git add -A
-git commit -m "Initial version of the shared focus timer"
-```
-
-Then create a new **empty** repository on GitHub (no README/license — this folder already has one), and run the two commands GitHub shows you, e.g.:
-
-```
-git remote add origin https://github.com/<your-username>/<repo-name>.git
+cd ~/Documents/Timer
+git remote add origin https://github.com/<your-username>/qa-focus-timer.git
 git branch -M main
 git push -u origin main
 ```
+
+If this is the first time you've pushed from this Mac, Git may open a browser window asking you to sign in and authorize — that's normal, approve it and the push will continue.
 
 ## 3. Deploy on Netlify
 
