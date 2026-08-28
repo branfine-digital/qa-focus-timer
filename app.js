@@ -342,13 +342,19 @@
     renderEmojiGrid();
     updateJoinButtonState();
 
+    // Returning visitor: pre-fill their saved name/emoji, but still require
+    // one click on "Continue" (rather than auto-joining) so the browser has a
+    // user gesture to unlock audio playback for the chime/join sounds.
     const saved = localStorage.getItem(IDENTITY_KEY);
     if (saved) {
       try {
-        identity = JSON.parse(saved);
-        if (identity && identity.name && identity.emoji) {
-          enterRoom();
-          return;
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.name && parsed.emoji) {
+          selectedEmoji = parsed.emoji;
+          nameInput.value = parsed.name;
+          joinBtn.textContent = "Continue";
+          renderEmojiGrid();
+          updateJoinButtonState();
         }
       } catch (e) { /* fall through to entry screen */ }
     }

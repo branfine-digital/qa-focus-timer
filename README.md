@@ -48,7 +48,7 @@ That URL never changes going forward — bookmark it and share it with the team.
 - **The timer** lives in one row of the `timer_state` table. Starting a timer writes the end time to that row; Supabase Realtime pushes the change to every connected browser instantly, and each browser counts down to that same timestamp so everyone stays in sync (not just independently counting down, which would drift).
 - **Sounds** are synthesized in the browser with the Web Audio API — no sound files to host. A soft two-note chime plays (and repeats) when a timer ends, and a quieter blip plays when someone else joins the room.
 - **When a timer ends**, every browser shows a full-screen "Time's up!" state and plays the chime on a loop. Anyone clicking anywhere resets the shared room state, which every browser picks up — the whole room drops back to the picker at the same time, with the duration bubbles animating back in.
-- **Your name/emoji** are remembered in your browser (localStorage), so you won't be asked again on future visits from the same browser. To switch identity, clear your browser's site data for this URL, or ask and I can add a "change identity" button.
+- **Your name/emoji** are remembered in your browser (localStorage) and pre-filled on your next visit — you'll still see one "Continue" click before entering, which is intentional: browsers require a click somewhere on the page before they'll let a site play audio, so that click is what unlocks the chime/join sounds for your session. To switch identity, clear your browser's site data for this URL, or ask and I can add a "change identity" button.
 
 ## Files
 
