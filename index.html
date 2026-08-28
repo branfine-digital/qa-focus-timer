@@ -34,23 +34,23 @@
     <main class="room-main">
 
       <!-- Idle / picker state -->
-      <section id="picker-panel" class="panel">
+      <section id="picker-panel" class="panel entrance">
         <div class="mode-tabs">
           <button class="mode-tab active" data-mode="work">Work</button>
           <button class="mode-tab" data-mode="break">Break</button>
         </div>
 
         <div id="work-bubbles" class="duration-bubbles">
-          <button class="bubble" data-minutes="25">25<span>min</span></button>
-          <button class="bubble" data-minutes="45">45<span>min</span></button>
-          <button class="bubble" data-minutes="30">30<span>min</span></button>
-          <button class="bubble" data-minutes="10">10<span>min</span></button>
+          <button class="bubble entrance" data-minutes="25">25<span>min</span></button>
+          <button class="bubble entrance" data-minutes="45">45<span>min</span></button>
+          <button class="bubble entrance" data-minutes="30">30<span>min</span></button>
+          <button class="bubble entrance" data-minutes="10">10<span>min</span></button>
         </div>
 
         <div id="break-bubbles" class="duration-bubbles" hidden>
-          <button class="bubble" data-minutes="10">10<span>min</span></button>
-          <button class="bubble" data-minutes="15">15<span>min</span></button>
-          <button class="bubble" data-minutes="5">5<span>min</span></button>
+          <button class="bubble entrance" data-minutes="10">10<span>min</span></button>
+          <button class="bubble entrance" data-minutes="15">15<span>min</span></button>
+          <button class="bubble entrance" data-minutes="5">5<span>min</span></button>
         </div>
 
         <div class="custom-row">
@@ -61,7 +61,7 @@
       </section>
 
       <!-- Running countdown state -->
-      <section id="countdown-panel" class="panel" hidden>
+      <section id="countdown-panel" class="panel entrance" hidden>
         <p id="countdown-mode-label" class="countdown-mode-label">Work session</p>
         <div class="countdown-ring-wrap" id="countdown-ring-wrap">
           <svg class="countdown-ring" viewBox="0 0 200 200">

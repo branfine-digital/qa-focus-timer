@@ -40,6 +40,26 @@
     return list[Math.floor(Math.random() * list.length)];
   }
 
+  // .panel and .bubble carry a one-time "pop-in" arrival animation via the
+  // .entrance class (see style.css). Toggling an element's `hidden`
+  // attribute restarts any CSS animation on it, so if pop-in stayed on the
+  // base class it would replay every time the picker panel/bubbles come
+  // back after a timer ends -- a visible disappear-then-reappear flash.
+  // Stripping .entrance after its first play makes it a true one-shot, while
+  // bubble-idle (which never touches opacity) stays on the base class and
+  // can safely restart forever.
+  function stripEntranceOnce(el) {
+    if (!el) return;
+    el.addEventListener(
+      "animationend",
+      function onEntranceEnd(e) {
+        if (e.animationName !== "pop-in") return;
+        el.classList.remove("entrance");
+        el.removeEventListener("animationend", onEntranceEnd);
+      }
+    );
+  }
+
   // ---------- DOM ----------
   const entryScreen = document.getElementById("entry-screen");
   const roomScreen = document.getElementById("room-screen");
@@ -64,6 +84,10 @@
   const countdownRingProgress = document.getElementById("countdown-ring-progress");
   const endTimerBtn = document.getElementById("end-timer-btn");
   const doneOverlay = document.getElementById("done-overlay");
+
+  stripEntranceOnce(pickerPanel);
+  stripEntranceOnce(countdownPanel);
+  document.querySelectorAll(".bubble").forEach((btn) => stripEntranceOnce(btn));
 
   const RING_RADIUS = 90;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
