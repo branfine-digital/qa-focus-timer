@@ -195,15 +195,28 @@ body {
   cursor: pointer;
   box-shadow: 0 8px 18px rgba(232, 121, 74, 0.35);
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-  animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards,
+             bubble-idle 3.6s ease-in-out 0.5s infinite;
 }
-.bubble:nth-child(1) { animation-delay: 0.03s; }
-.bubble:nth-child(2) { animation-delay: 0.09s; }
-.bubble:nth-child(3) { animation-delay: 0.15s; }
-.bubble:nth-child(4) { animation-delay: 0.21s; }
+.bubble:nth-child(1) { animation-delay: 0.03s, 0.1s; }
+.bubble:nth-child(2) { animation-delay: 0.09s, 0.5s; }
+.bubble:nth-child(3) { animation-delay: 0.15s, 0.9s; }
+.bubble:nth-child(4) { animation-delay: 0.21s, 1.3s; }
 .bubble span { font-size: 0.7rem; font-weight: 500; opacity: 0.9; }
-.bubble:hover { transform: scale(1.08) translateY(-2px); }
+.bubble:hover { transform: scale(1.08) translateY(-2px); animation-play-state: paused, paused; }
 .bubble:active { transform: scale(0.96); }
+.bubble.squish { animation: bubble-squish 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+@keyframes bubble-idle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-5px) rotate(-2deg); }
+}
+@keyframes bubble-squish {
+  0% { transform: scale(1, 1); }
+  35% { transform: scale(0.8, 0.85); }
+  65% { transform: scale(1.1, 1.05); }
+  100% { transform: scale(1, 1); }
+}
 
 #break-bubbles .bubble {
   background: linear-gradient(160deg, #b9e8d2, var(--break));
@@ -248,13 +261,54 @@ body {
   color: var(--ink-soft);
   margin: 0 0 0.75rem;
 }
+
+.countdown-ring-wrap {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.countdown-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+.countdown-ring-track { fill: none; stroke: #f0e6d8; stroke-width: 10; }
+.countdown-ring-progress {
+  fill: none;
+  stroke: var(--work-deep);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke 0.4s ease;
+}
+#countdown-panel.mode-break .countdown-ring-progress { stroke: var(--break-deep); }
+.countdown-ring-wrap.final-stretch .countdown-ring-progress { stroke: #e6544a; }
+.countdown-ring-wrap.final-stretch .countdown-display { color: #e6544a; animation: pulse-text 1s ease-in-out infinite; }
+
+@keyframes pulse-text {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
 .countdown-display {
-  font-size: 4.5rem;
+  position: relative;
+  z-index: 1;
+  font-size: 3.6rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 0.5rem;
 }
-.countdown-started-by { color: var(--ink-soft); font-size: 0.9rem; margin: 0 0 1.25rem; }
+.countdown-started-by { color: var(--ink-soft); font-size: 0.9rem; margin: 0.75rem 0 1.25rem; }
+
+/* ---------- Bubble-to-countdown morph ---------- */
+.morph-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  will-change: left, top, width, height, border-radius;
+}
+.panel-fade-out { animation: panel-fade-out 0.18s ease forwards; }
+@keyframes panel-fade-out {
+  to { opacity: 0; transform: scale(0.97); }
+}
 
 .end-timer-btn {
   border: none;

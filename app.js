@@ -29,8 +29,16 @@
   const countdownDisplay = document.getElementById("countdown-display");
   const countdownModeLabel = document.getElementById("countdown-mode-label");
   const countdownStartedBy = document.getElementById("countdown-started-by");
+  const countdownRingWrap = document.getElementById("countdown-ring-wrap");
+  const countdownRingProgress = document.getElementById("countdown-ring-progress");
   const endTimerBtn = document.getElementById("end-timer-btn");
   const doneOverlay = document.getElementById("done-overlay");
+
+  const RING_RADIUS = 90;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+  countdownRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+  countdownRingProgress.style.strokeDashoffset = "0";
+  let morphSourceBubble = null;
 
   // ---------- State ----------
   let selectedEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
@@ -161,7 +169,47 @@
     return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
   }
 
+  function resetMorphArtifacts() {
+    pickerPanel.classList.remove("panel-fade-out");
+    if (morphSourceBubble) {
+      morphSourceBubble.style.visibility = "";
+      morphSourceBubble = null;
+    }
+  }
+
+  function morphBubbleIntoCountdown(bubbleEl) {
+    const startRect = bubbleEl.getBoundingClientRect();
+    const endRect = pickerPanel.getBoundingClientRect();
+    const computed = getComputedStyle(bubbleEl);
+
+    const ghost = document.createElement("div");
+    ghost.className = "morph-ghost";
+    Object.assign(ghost.style, {
+      left: startRect.left + "px",
+      top: startRect.top + "px",
+      width: startRect.width + "px",
+      height: startRect.height + "px",
+      borderRadius: "999px",
+      background: computed.backgroundImage !== "none" ? computed.backgroundImage : computed.backgroundColor,
+    });
+    document.body.appendChild(ghost);
+
+    morphSourceBubble = bubbleEl;
+    bubbleEl.style.visibility = "hidden";
+    pickerPanel.classList.add("panel-fade-out");
+
+    const anim = ghost.animate(
+      [
+        { left: startRect.left + "px", top: startRect.top + "px", width: startRect.width + "px", height: startRect.height + "px", borderRadius: "999px" },
+        { left: endRect.left + "px", top: endRect.top + "px", width: endRect.width + "px", height: endRect.height + "px", borderRadius: "28px" },
+      ],
+      { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" }
+    );
+    anim.onfinish = () => ghost.remove();
+  }
+
   function showPicker() {
+    resetMorphArtifacts();
     doneOverlay.hidden = true;
     countdownPanel.hidden = true;
     pickerPanel.hidden = false;
@@ -170,9 +218,11 @@
   }
 
   function showCountdown(row) {
+    resetMorphArtifacts();
     pickerPanel.hidden = true;
     doneOverlay.hidden = true;
     countdownPanel.hidden = false;
+    countdownPanel.classList.toggle("mode-break", row.mode === "break");
     countdownModeLabel.textContent = row.mode === "work" ? "Work session" : "Break";
     countdownStartedBy.textContent = row.started_by ? "Started by " + row.started_by : "";
   }
@@ -197,11 +247,14 @@
     if (!row || row.mode === "idle" || !row.ends_at) {
       inDoneState = false;
       stopChimeLoop();
+      countdownRingProgress.style.strokeDashoffset = "0";
+      countdownRingWrap.classList.remove("final-stretch");
       showPicker();
       return;
     }
 
     const endsAtMs = new Date(row.ends_at).getTime();
+    const totalMs = (row.duration_sec || 0) * 1000;
 
     const tick = () => {
       const remaining = endsAtMs - Date.now();
@@ -217,6 +270,11 @@
       if (inDoneState) return; // already transitioned, wait for reset
       showCountdown(row);
       countdownDisplay.textContent = formatTime(remaining);
+      if (totalMs > 0) {
+        const elapsedFraction = Math.min(1, Math.max(0, (totalMs - remaining) / totalMs));
+        countdownRingProgress.style.strokeDashoffset = String(RING_CIRCUMFERENCE * elapsedFraction);
+        countdownRingWrap.classList.toggle("final-stretch", elapsedFraction >= 0.8);
+      }
     };
 
     tick();
@@ -263,6 +321,10 @@
   document.querySelectorAll(".bubble").forEach((btn) => {
     btn.addEventListener("click", () => {
       const minutes = parseInt(btn.dataset.minutes, 10);
+      btn.classList.remove("squish");
+      void btn.offsetWidth; // restart the squish animation if clicked again quickly
+      btn.classList.add("squish");
+      morphBubbleIntoCountdown(btn);
       startTimer(activeMode, minutes);
     });
   });

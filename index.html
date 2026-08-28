@@ -63,7 +63,13 @@
       <!-- Running countdown state -->
       <section id="countdown-panel" class="panel" hidden>
         <p id="countdown-mode-label" class="countdown-mode-label">Work session</p>
-        <div id="countdown-display" class="countdown-display">25:00</div>
+        <div class="countdown-ring-wrap" id="countdown-ring-wrap">
+          <svg class="countdown-ring" viewBox="0 0 200 200">
+            <circle class="countdown-ring-track" cx="100" cy="100" r="90"></circle>
+            <circle class="countdown-ring-progress" id="countdown-ring-progress" cx="100" cy="100" r="90"></circle>
+          </svg>
+          <div id="countdown-display" class="countdown-display">25:00</div>
+        </div>
         <p id="countdown-started-by" class="countdown-started-by"></p>
         <button id="end-timer-btn" class="end-timer-btn" type="button">End timer</button>
       </section>
