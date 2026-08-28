@@ -254,7 +254,21 @@ body {
   font-variant-numeric: tabular-nums;
   margin-bottom: 0.5rem;
 }
-.countdown-started-by { color: var(--ink-soft); font-size: 0.9rem; margin: 0; }
+.countdown-started-by { color: var(--ink-soft); font-size: 0.9rem; margin: 0 0 1.25rem; }
+
+.end-timer-btn {
+  border: none;
+  background: #f6f1ea;
+  color: #a15a3f;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+.end-timer-btn:hover { background: #f3e2d8; transform: translateY(-1px); }
+.end-timer-btn:active { transform: translateY(0); }
 
 /* ---------- Done overlay ---------- */
 

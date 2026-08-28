@@ -29,6 +29,7 @@
   const countdownDisplay = document.getElementById("countdown-display");
   const countdownModeLabel = document.getElementById("countdown-mode-label");
   const countdownStartedBy = document.getElementById("countdown-started-by");
+  const endTimerBtn = document.getElementById("end-timer-btn");
   const doneOverlay = document.getElementById("done-overlay");
 
   // ---------- State ----------
@@ -277,6 +278,14 @@
   });
 
   doneOverlay.addEventListener("click", () => {
+    resetRoom();
+  });
+
+  // Anyone can end a running timer early (e.g. someone meant to start 45
+  // minutes and hit 30 by mistake) -- this just cancels it for everyone and
+  // returns to the picker, with no chime since it wasn't a natural finish.
+  endTimerBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
     resetRoom();
   });
 
