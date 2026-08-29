@@ -3,10 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>QA Focus Timer</title>
+<title>Focus Sprint Timer</title>
+<script>
+  // Set the theme before first paint so there's no flash of the wrong
+  // theme while app.js (loaded at the bottom of the page) finishes parsing.
+  (function () {
+    try {
+      if (localStorage.getItem("qa_focus_theme") === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    } catch (e) {}
+  })();
+</script>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+  <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" aria-label="Switch to night mode" title="Switch to night mode">🌙</button>
 
   <!-- Entry screen: pick name + emoji before joining the room -->
   <div id="entry-screen" class="screen">
@@ -27,7 +40,7 @@
   <div id="room-screen" class="screen" hidden>
 
     <header class="room-header">
-      <h1>QA Focus Room</h1>
+      <h1>Focus Sprint Timer</h1>
       <div id="presence-bar" class="presence-bar" aria-label="People in the room"></div>
     </header>
 

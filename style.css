@@ -1,6 +1,7 @@
 :root {
   --bg-1: #fef6ec;
   --bg-2: #eaf4ff;
+  --bg-accent: #ffe3d6;
   --ink: #2f2a26;
   --ink-soft: #6b6259;
   --work: #ff9f68;
@@ -8,8 +9,49 @@
   --break: #7bc9a6;
   --break-deep: #4fa583;
   --card-bg: #ffffff;
+  --chip-bg: #f6f1ea;
+  --chip-bg-hover: #ece4d8;
+  --border-soft: #ece4d8;
+  --disabled-bg: #e6ddd0;
+  --disabled-ink: #b3a99a;
+  --ring-track: #f0e6d8;
+  --emoji-selected-bg: #fff1e8;
+  --end-btn-ink: #a15a3f;
+  --end-btn-bg-hover: #f3e2d8;
+  --danger: #c0392b;
   --shadow: 0 12px 30px rgba(60, 40, 20, 0.12);
+  --chip-shadow: 0 3px 10px rgba(60, 40, 20, 0.08);
   font-size: 16px;
+}
+
+/* Night mode: same layout and emoji, just a darker, easier-on-the-eyes
+   palette with enough contrast to stay readable. Toggled via the button in
+   the corner and remembered in localStorage (see app.js / the inline
+   <head> script in index.html, which applies it before first paint so
+   there's no flash of the wrong theme on load). */
+html[data-theme="dark"] {
+  --bg-1: #1a1e2a;
+  --bg-2: #232a3d;
+  --bg-accent: #2b2340;
+  --ink: #edeff5;
+  --ink-soft: #a3a9bd;
+  --work: #ff9f68;
+  --work-deep: #ffb385;
+  --break: #7bc9a6;
+  --break-deep: #93e0bb;
+  --card-bg: #252b3d;
+  --chip-bg: #313852;
+  --chip-bg-hover: #3b4362;
+  --border-soft: #3b4362;
+  --disabled-bg: #323850;
+  --disabled-ink: #6d7390;
+  --ring-track: #3a4160;
+  --emoji-selected-bg: #40304a;
+  --end-btn-ink: #ffb385;
+  --end-btn-bg-hover: #3b4362;
+  --danger: #ff7a6b;
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --chip-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -26,14 +68,40 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: radial-gradient(circle at 20% 20%, var(--bg-2), transparent 55%),
-              radial-gradient(circle at 80% 0%, #ffe3d6, transparent 50%),
+              radial-gradient(circle at 80% 0%, var(--bg-accent), transparent 50%),
               var(--bg-1);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .screen { width: 100%; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- Theme toggle ---------- */
+
+.theme-toggle-btn {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 90;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background-color 0.25s ease, box-shadow 0.25s ease;
+}
+.theme-toggle-btn:hover { transform: scale(1.08) rotate(-10deg); }
+.theme-toggle-btn:active { transform: scale(0.94); }
 
 /* ---------- Entry screen ---------- */
 
@@ -46,6 +114,7 @@ body {
   max-width: 420px;
   text-align: center;
   animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .entry-card h1 { margin: 0 0 0.35rem; font-size: 1.5rem; }
@@ -63,21 +132,24 @@ body {
   padding: 0.5rem 0;
   border-radius: 14px;
   border: 2px solid transparent;
-  background: #f6f1ea;
+  background: var(--chip-bg);
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.25s ease;
 }
 .emoji-option:hover { transform: scale(1.12); }
-.emoji-option.selected { border-color: var(--work-deep); background: #fff1e8; transform: scale(1.12); }
+.emoji-option.selected { border-color: var(--work-deep); background: var(--emoji-selected-bg); transform: scale(1.12); }
 
 #name-input {
   width: 100%;
   padding: 0.75rem 1rem;
   font-size: 1rem;
   border-radius: 14px;
-  border: 2px solid #ece4d8;
+  border: 2px solid var(--border-soft);
   margin-bottom: 1.25rem;
   outline: none;
+  background: var(--card-bg);
+  color: var(--ink);
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.15s ease;
 }
 #name-input:focus { border-color: var(--work); }
 
@@ -93,10 +165,10 @@ body {
   cursor: pointer;
   transition: transform 0.12s ease, background 0.2s ease;
 }
-.primary-btn:disabled { background: #e6ddd0; color: #b3a99a; cursor: not-allowed; }
+.primary-btn:disabled { background: var(--disabled-bg); color: var(--disabled-ink); cursor: not-allowed; }
 .primary-btn:not(:disabled):hover { transform: translateY(-1px); background: var(--work-deep); }
 
-.entry-error { color: #c0392b; font-size: 0.85rem; margin-top: 0.75rem; }
+.entry-error { color: var(--danger); font-size: 0.85rem; margin-top: 0.75rem; }
 
 /* ---------- Room screen ---------- */
 
@@ -121,22 +193,24 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: white;
+  background: var(--card-bg);
   border-radius: 999px;
   padding: 0.35rem 0.75rem 0.35rem 0.35rem;
-  box-shadow: 0 3px 10px rgba(60,40,20,0.08);
+  box-shadow: var(--chip-shadow);
   font-size: 0.85rem;
   animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
 }
 .presence-chip .chip-emoji {
   font-size: 1.1rem;
-  background: #f6f1ea;
+  background: var(--chip-bg);
   border-radius: 999px;
   width: 1.8rem;
   height: 1.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.25s ease;
 }
 
 .room-main { max-width: 720px; margin: 0 auto; width: 100%; }
@@ -146,6 +220,7 @@ body {
   border-radius: 28px;
   box-shadow: var(--shadow);
   padding: 2rem;
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
 }
 /* .entrance plays the pop-in animation exactly once (stripped by JS after
    its first play). Without this split, .panel's animation would replay
@@ -159,9 +234,10 @@ body {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
-  background: #f6f1ea;
+  background: var(--chip-bg);
   padding: 0.35rem;
   border-radius: 999px;
+  transition: background-color 0.25s ease;
 }
 .mode-tab {
   flex: 1;
@@ -175,7 +251,7 @@ body {
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease;
 }
-.mode-tab.active { background: white; color: var(--ink); box-shadow: 0 3px 8px rgba(60,40,20,0.1); }
+.mode-tab.active { background: var(--card-bg); color: var(--ink); box-shadow: var(--chip-shadow); }
 
 .duration-bubbles {
   display: flex;
@@ -251,23 +327,27 @@ body {
   font-size: 0.9rem;
 }
 #custom-minutes {
-  width: 80px;
+  width: 104px;
   padding: 0.5rem 0.6rem;
   border-radius: 12px;
-  border: 2px solid #ece4d8;
+  border: 2px solid var(--border-soft);
   font-size: 0.95rem;
   text-align: center;
+  background: var(--card-bg);
+  color: var(--ink);
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.15s ease;
 }
 .secondary-btn {
   border: none;
-  background: #f6f1ea;
+  background: var(--chip-bg);
   color: var(--ink);
   padding: 0.5rem 1rem;
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.2s ease;
 }
-.secondary-btn:hover { background: #ece4d8; }
+.secondary-btn:hover { background: var(--chip-bg-hover); }
 
 /* ---------- Countdown panel ---------- */
 
@@ -291,7 +371,7 @@ body {
   justify-content: center;
 }
 .countdown-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
-.countdown-ring-track { fill: none; stroke: #f0e6d8; stroke-width: 10; }
+.countdown-ring-track { fill: none; stroke: var(--ring-track); stroke-width: 10; transition: stroke 0.25s ease; }
 .countdown-ring-progress {
   fill: none;
   stroke: var(--work-deep);
@@ -327,16 +407,16 @@ body {
 
 .end-timer-btn {
   border: none;
-  background: #f6f1ea;
-  color: #a15a3f;
+  background: var(--chip-bg);
+  color: var(--end-btn-ink);
   padding: 0.5rem 1.1rem;
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.12s ease;
+  transition: background 0.15s ease, transform 0.12s ease, color 0.25s ease;
 }
-.end-timer-btn:hover { background: #f3e2d8; transform: translateY(-1px); }
+.end-timer-btn:hover { background: var(--end-btn-bg-hover); transform: translateY(-1px); }
 .end-timer-btn:active { transform: translateY(0); }
 
 /* ---------- Done overlay ---------- */
