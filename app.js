@@ -53,6 +53,29 @@
     return list[Math.floor(Math.random() * list.length)];
   }
 
+  // ---------- Break games ----------
+  // Placeholder word bank -- swap this out for Bran's real list whenever
+  // it's ready. Every entry must be exactly 5 letters.
+  const WORDLE_WORDS = [
+    "APPLE","BEACH","BRAVE","BREAD","BRICK","CHESS","CHILL","CLOUD","CRISP","DAISY",
+    "DELTA","DOUGH","DRIFT","EAGLE","EARTH","FANCY","FIELD","FLAME","FLASH","FRESH",
+    "GHOST","GRAPE","GRASS","GREEN","HAPPY","HEART","HONEY","HOUSE","IVORY","JOLLY",
+    "LEMON","LIGHT","MANGO","MAPLE","MUSIC","NOBLE","NORTH","OCEAN","PAPER","PEACH",
+    "PIXEL","PLANT","QUIET","RIVER","ROBOT","SMILE","SNACK","SNOWY","SOLAR","SPARK",
+    "STONE","STORM","SUGAR","SUNNY","SWIFT","TIGER","TOAST","TRAIN","TULIP","UNITY",
+    "VIVID","WATER","WHEAT","WITTY","ZEBRA",
+  ];
+  const MEMORY_EMOJIS = ["🍕", "🐙", "🚀", "🌵", "🎧", "🍩", "🦖", "🐝"]; // 8 pairs = 16 cards
+
+  // Only ever true on a Netlify Deploy Preview (or localhost, for my own
+  // testing) -- never on the real production domain. Lets a single person
+  // try the whole challenge/play flow solo against a simulated opponent
+  // before real teammates are around to test with.
+  const IS_PREVIEW_BUILD = /deploy-preview/.test(location.hostname) || location.hostname === "localhost";
+  const TEST_BOT_ID = "test-bot";
+  const TEST_BOT_NAME = "Rally";
+  const TEST_BOT_EMOJI = "🤖";
+
   // .panel and .bubble carry a one-time "pop-in" arrival animation via the
   // .entrance class (see style.css). Toggling an element's `hidden`
   // attribute restarts any CSS animation on it, so if pop-in stayed on the
@@ -98,8 +121,32 @@
   const endTimerBtn = document.getElementById("end-timer-btn");
   const doneOverlay = document.getElementById("done-overlay");
 
+  const breakGamesPanel = document.getElementById("break-games-panel");
+  const gameOpponentList = document.getElementById("game-opponent-list");
+  const gameEmptyHint = document.getElementById("game-empty-hint");
+  const challengeIncoming = document.getElementById("challenge-incoming");
+  const challengeIncomingText = document.getElementById("challenge-incoming-text");
+  const challengeAcceptBtn = document.getElementById("challenge-accept-btn");
+  const challengeDeclineBtn = document.getElementById("challenge-decline-btn");
+  const challengeOutgoing = document.getElementById("challenge-outgoing");
+  const challengeOutgoingText = document.getElementById("challenge-outgoing-text");
+  const challengeCancelBtn = document.getElementById("challenge-cancel-btn");
+  const gameOverlay = document.getElementById("game-overlay");
+  const gameTitle = document.getElementById("game-title");
+  const gameTurnIndicator = document.getElementById("game-turn-indicator");
+  const memoryBoard = document.getElementById("memory-board");
+  const memoryScoreboard = document.getElementById("memory-scoreboard");
+  const wordleBoard = document.getElementById("wordle-board");
+  const wordleRows = document.getElementById("wordle-rows");
+  const wordleGuessForm = document.getElementById("wordle-guess-form");
+  const wordleGuessInput = document.getElementById("wordle-guess-input");
+  const wordleError = document.getElementById("wordle-error");
+  const gameResult = document.getElementById("game-result");
+  const gameCloseBtn = document.getElementById("game-close-btn");
+
   stripEntranceOnce(pickerPanel);
   stripEntranceOnce(countdownPanel);
+  stripEntranceOnce(breakGamesPanel);
   document.querySelectorAll(".bubble").forEach((btn) => stripEntranceOnce(btn));
 
   // ---------- Theme (day/night) ----------
@@ -145,6 +192,7 @@
   // ---------- State ----------
   let selectedEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
   let identity = null; // { name, emoji }
+  let myClientId = null; // set once, in enterRoom, before anything touches games/presence
   let activeMode = "work";
   let currentRow = null; // last known timer_state row
   let tickTimer = null;
@@ -152,6 +200,12 @@
   let chimeLoopTimer = null;
   let audioCtx = null;
   let hasReceivedInitialPresenceSync = false;
+
+  // ---------- Break games state ----------
+  let presentPeople = {}; // clientId -> { name, emoji }, from presence
+  let outgoingChallenge = null; // a game row I created, still status "pending"
+  let incomingChallenge = null; // a game row where I'm player2, still "pending"
+  let activeGame = null; // the game row currently shown in the play overlay
 
   // ---------- Audio (synthesized, no external files) ----------
   function ensureAudioContext() {
@@ -248,14 +302,17 @@
   // ---------- Room screen ----------
   function renderPresence(state) {
     presenceBar.innerHTML = "";
-    Object.values(state).forEach((entries) => {
+    presentPeople = {};
+    Object.entries(state).forEach(([key, entries]) => {
       const p = entries[0];
       if (!p) return;
+      presentPeople[key] = { name: p.name, emoji: p.emoji };
       const chip = document.createElement("div");
       chip.className = "presence-chip";
       chip.innerHTML = '<span class="chip-emoji">' + p.emoji + "</span><span>" + p.name + "</span>";
       presenceBar.appendChild(chip);
     });
+    renderGameOpponents();
   }
 
   function formatTime(ms) {
@@ -333,6 +390,23 @@
   function applyTimerState(row) {
     currentRow = row;
     stopTicking();
+
+    const isBreak = !!(row && row.mode === "break");
+    breakGamesPanel.hidden = !isBreak;
+    if (isBreak) renderGameOpponents();
+
+    // Games only make sense during a shared break -- once the room leaves
+    // break (a new work session starts, or someone resets to idle), any
+    // game/challenge I'm part of no longer makes sense to leave dangling.
+    if (!isBreak) {
+      if (outgoingChallenge) cancelOutgoingChallenge();
+      if (incomingChallenge) declineChallenge();
+      if (activeGame && activeGame.status === "active") {
+        commitGameUpdate(activeGame, { status: "abandoned" });
+        activeGame = null;
+        hideGameOverlay();
+      }
+    }
 
     if (!row || row.mode === "idle" || !row.ends_at) {
       inDoneState = false;
@@ -486,6 +560,479 @@
     resetRoom();
   });
 
+  // ---------- Break games: shared helpers ----------
+
+  function getPresentOpponents() {
+    const list = Object.keys(presentPeople)
+      .filter((id) => id !== myClientId)
+      .map((id) => ({ id, name: presentPeople[id].name, emoji: presentPeople[id].emoji }));
+    if (IS_PREVIEW_BUILD) {
+      list.push({ id: TEST_BOT_ID, name: TEST_BOT_NAME + " (test bot)", emoji: TEST_BOT_EMOJI });
+    }
+    return list;
+  }
+
+  function renderGameOpponents() {
+    const opponents = getPresentOpponents();
+    gameOpponentList.innerHTML = "";
+    gameEmptyHint.hidden = opponents.length > 0;
+    const busy = !!(outgoingChallenge || incomingChallenge || activeGame);
+    opponents.forEach((op) => {
+      const row = document.createElement("div");
+      row.className = "game-opponent-row";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "game-opponent-name";
+      nameSpan.textContent = op.emoji + " " + op.name;
+      row.appendChild(nameSpan);
+
+      const btnWrap = document.createElement("span");
+      [["memory", "🧠 Memory"], ["wordle", "🔤 Wordle"]].forEach(([type, label]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "game-challenge-btn";
+        btn.textContent = label;
+        btn.disabled = busy;
+        btn.addEventListener("click", () => sendChallenge(op, type));
+        btnWrap.appendChild(btn);
+      });
+      row.appendChild(btnWrap);
+      gameOpponentList.appendChild(row);
+    });
+  }
+
+  function playChallengeSound() {
+    try {
+      const ctx = ensureAudioContext();
+      const now = ctx.currentTime;
+      tone(ctx, 740, now, 0.14, 0.09);
+      tone(ctx, 988, now + 0.12, 0.16, 0.09);
+    } catch (e) { /* audio not unlocked yet, ignore */ }
+  }
+
+  function showIncomingChallenge(row) {
+    challengeIncomingText.textContent =
+      row.player1_name + " challenged you to " + (row.type === "memory" ? "Memory Match" : "a Wordle Duel") + "!";
+    challengeIncoming.hidden = false;
+    playChallengeSound();
+  }
+  function hideIncomingChallenge() { challengeIncoming.hidden = true; }
+
+  function showOutgoingChallenge(row) {
+    challengeOutgoingText.textContent = "Waiting for " + row.player2_name + " to accept...";
+    challengeCancelBtn.hidden = false;
+    challengeOutgoing.hidden = false;
+  }
+  function hideOutgoingChallenge() { challengeOutgoing.hidden = true; }
+
+  // Reuses the outgoing-challenge toast slot for a brief, non-blocking
+  // message (e.g. "Alex declined.") since it's not tied to a live challenge.
+  function flashGameToast(message) {
+    challengeOutgoingText.textContent = message;
+    challengeCancelBtn.hidden = true;
+    challengeOutgoing.hidden = false;
+    setTimeout(() => {
+      challengeOutgoing.hidden = true;
+      challengeCancelBtn.hidden = false;
+    }, 2600);
+  }
+
+  function hideGameOverlay() { gameOverlay.hidden = true; }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
+
+  function buildInitialGameState(gameType) {
+    if (gameType === "memory") {
+      const deck = shuffle(MEMORY_EMOJIS.concat(MEMORY_EMOJIS));
+      return {
+        deck,
+        matched: new Array(deck.length).fill(false),
+        matchedBy: new Array(deck.length).fill(null),
+        flipped: [],
+      };
+    }
+    return {
+      secret: pickRandom(WORDLE_WORDS).toUpperCase(),
+      guesses: [],
+      maxGuesses: 6,
+    };
+  }
+
+  // ---------- Break games: challenge lifecycle ----------
+  //
+  // A single "games" table row (see supabase-schema.sql) is the source of
+  // truth for one challenge/game, the same shared-row pattern the timer
+  // itself uses. handleGameRow() is the one place that reacts to a row no
+  // matter where it came from: a realtime postgres_changes event, the
+  // on-load fetch of an in-progress game, my own optimistic move, or (in a
+  // preview build only) a simulated move from the test bot.
+  function handleGameRow(row) {
+    if (!row) return;
+    const iAmP1 = row.player1_id === myClientId;
+    const iAmP2 = row.player2_id === myClientId;
+    if (!iAmP1 && !iAmP2) return; // not a game I'm part of
+
+    if (row.status === "pending") {
+      if (iAmP2) { incomingChallenge = row; showIncomingChallenge(row); }
+      else { outgoingChallenge = row; showOutgoingChallenge(row); }
+      renderGameOpponents();
+      return;
+    }
+
+    if (row.status === "declined") {
+      if (outgoingChallenge && outgoingChallenge.id === row.id) {
+        outgoingChallenge = null;
+        hideOutgoingChallenge();
+        flashGameToast((iAmP1 ? row.player2_name : row.player1_name) + " declined.");
+      }
+      if (incomingChallenge && incomingChallenge.id === row.id) {
+        incomingChallenge = null;
+        hideIncomingChallenge();
+      }
+      renderGameOpponents();
+      return;
+    }
+
+    if (row.status === "active") {
+      outgoingChallenge = null;
+      incomingChallenge = null;
+      hideOutgoingChallenge();
+      hideIncomingChallenge();
+      // Only fire turn-change side effects (the "your turn" ping, waking up
+      // the test bot) the moment the turn actually changes -- not on every
+      // re-render of an unchanged row, which would otherwise double them up
+      // when the realtime echo of my own optimistic update arrives a beat
+      // later.
+      const wasKnownTurn = activeGame && activeGame.id === row.id ? activeGame.turn : undefined;
+      activeGame = row;
+      renderGameOpponents();
+      renderActiveGame();
+      if (row.turn !== wasKnownTurn) onGameTurnChanged(row);
+      return;
+    }
+
+    if (row.status === "finished" || row.status === "abandoned") {
+      if (activeGame && activeGame.id === row.id) {
+        activeGame = row;
+        renderActiveGame();
+      }
+      renderGameOpponents();
+    }
+  }
+
+  function onGameTurnChanged(row) {
+    if (row.turn === myClientId) playChallengeSound();
+    else if (row.turn === TEST_BOT_ID) scheduleBotMove(row);
+  }
+
+  function scheduleBotMove(row) {
+    const gameId = row.id;
+    setTimeout(() => {
+      if (!activeGame || activeGame.id !== gameId) return;
+      if (activeGame.status !== "active" || activeGame.turn !== TEST_BOT_ID) return;
+      if (activeGame.type === "memory") makeBotMemoryMove(activeGame);
+      else makeBotWordleGuess(activeGame);
+    }, 900 + Math.random() * 900);
+  }
+
+  // Every game move -- mine or the simulated bot's -- goes through here. It
+  // applies optimistically right away (the same pattern used for starting
+  // the timer) and, for a real two-person game, persists the change. A
+  // preview-only game against the test bot has no database row at all
+  // (its id is prefixed "preview-"), so there's nothing to persist.
+  function commitGameUpdate(row, patch) {
+    const merged = Object.assign({}, row, patch, { updated_at: new Date().toISOString() });
+    handleGameRow(merged);
+    if (String(row.id).indexOf("preview-") === 0) return;
+    sb.from("games").update(patch).eq("id", row.id).then(({ error }) => {
+      if (error) console.error("Failed to update game:", error);
+    });
+  }
+
+  async function sendChallenge(opponent, gameType) {
+    if (outgoingChallenge || incomingChallenge || activeGame) return;
+    const baseRow = {
+      type: gameType,
+      status: "pending",
+      player1_id: myClientId,
+      player1_name: identity.emoji + " " + identity.name,
+      player2_id: opponent.id,
+      player2_name: opponent.emoji + " " + opponent.name,
+      turn: myClientId, // the challenger goes first
+      winner: null,
+      state: buildInitialGameState(gameType),
+    };
+
+    if (opponent.id === TEST_BOT_ID) {
+      const fakeRow = Object.assign(
+        { id: "preview-" + Date.now(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+        baseRow
+      );
+      handleGameRow(fakeRow);
+      setTimeout(() => {
+        if (outgoingChallenge && outgoingChallenge.id === fakeRow.id) {
+          commitGameUpdate(fakeRow, { status: "active" });
+        }
+      }, 1000 + Math.random() * 700);
+      return;
+    }
+
+    const { data, error } = await sb.from("games").insert(baseRow).select().single();
+    if (error) {
+      console.error("Failed to send challenge:", error);
+      flashGameToast("Couldn't send that challenge -- try again.");
+      return;
+    }
+    handleGameRow(data);
+  }
+
+  function acceptChallenge() {
+    if (!incomingChallenge) return;
+    commitGameUpdate(incomingChallenge, { status: "active" });
+  }
+
+  function declineChallenge() {
+    if (!incomingChallenge) return;
+    const row = incomingChallenge;
+    incomingChallenge = null;
+    hideIncomingChallenge();
+    renderGameOpponents();
+    sb.from("games").update({ status: "declined", updated_at: new Date().toISOString() }).eq("id", row.id).then(({ error }) => {
+      if (error) console.error("Failed to decline challenge:", error);
+    });
+  }
+
+  function cancelOutgoingChallenge() {
+    if (!outgoingChallenge) return;
+    const row = outgoingChallenge;
+    outgoingChallenge = null;
+    hideOutgoingChallenge();
+    renderGameOpponents();
+    if (String(row.id).indexOf("preview-") === 0) return;
+    sb.from("games").update({ status: "declined", updated_at: new Date().toISOString() }).eq("id", row.id).then(({ error }) => {
+      if (error) console.error("Failed to cancel challenge:", error);
+    });
+  }
+
+  challengeAcceptBtn.addEventListener("click", acceptChallenge);
+  challengeDeclineBtn.addEventListener("click", declineChallenge);
+  challengeCancelBtn.addEventListener("click", cancelOutgoingChallenge);
+
+  gameCloseBtn.addEventListener("click", () => {
+    if (activeGame && activeGame.status === "active") {
+      commitGameUpdate(activeGame, { status: "abandoned" });
+    }
+    activeGame = null;
+    hideGameOverlay();
+    renderGameOpponents();
+  });
+
+  // ---------- Break games: rendering ----------
+
+  function renderActiveGame() {
+    if (!activeGame) { hideGameOverlay(); return; }
+    gameOverlay.hidden = false;
+    const iAmP1 = activeGame.player1_id === myClientId;
+    const myName = iAmP1 ? activeGame.player1_name : activeGame.player2_name;
+    const oppName = iAmP1 ? activeGame.player2_name : activeGame.player1_name;
+    gameTitle.textContent =
+      (activeGame.type === "memory" ? "🧠 Memory Match" : "🔤 Wordle Duel") + ": " + myName + " vs " + oppName;
+
+    const isDone = activeGame.status === "finished" || activeGame.status === "abandoned";
+    gameResult.hidden = !isDone;
+    gameTurnIndicator.hidden = isDone;
+
+    if (isDone) {
+      if (activeGame.status === "abandoned") {
+        gameResult.textContent = "Game ended early.";
+      } else if (activeGame.winner === "tie") {
+        gameResult.textContent = "It's a tie!";
+      } else if (activeGame.winner === myClientId) {
+        gameResult.textContent = "🎉 You won!";
+      } else {
+        gameResult.textContent = (activeGame.winner === TEST_BOT_ID ? TEST_BOT_NAME : oppName) + " won!";
+      }
+    } else {
+      gameTurnIndicator.textContent =
+        activeGame.turn === myClientId ? "Your turn" :
+        activeGame.turn === TEST_BOT_ID ? TEST_BOT_NAME + " is thinking..." :
+        oppName + "'s turn";
+    }
+
+    memoryBoard.hidden = activeGame.type !== "memory";
+    memoryScoreboard.hidden = activeGame.type !== "memory";
+    wordleBoard.hidden = activeGame.type !== "wordle";
+
+    if (activeGame.type === "memory") renderMemoryBoard();
+    else renderWordleBoard();
+  }
+
+  // ---------- Memory match ----------
+
+  function renderMemoryBoard() {
+    const state = activeGame.state;
+    memoryBoard.innerHTML = "";
+    const myTurn = activeGame.turn === myClientId && activeGame.status === "active";
+    state.deck.forEach((emoji, i) => {
+      const isFaceUp = state.matched[i] || state.flipped.indexOf(i) !== -1;
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "memory-card" + (state.matched[i] ? " matched" : "") + (state.flipped.indexOf(i) !== -1 ? " flipped" : "");
+      cell.textContent = isFaceUp ? emoji : "❔";
+      cell.disabled = !myTurn || state.matched[i] || state.flipped.indexOf(i) !== -1 || state.flipped.length >= 2;
+      cell.addEventListener("click", () => playMemoryCard(i));
+      memoryBoard.appendChild(cell);
+    });
+    const p1Pairs = state.matchedBy.filter((id) => id === activeGame.player1_id).length / 2;
+    const p2Pairs = state.matchedBy.filter((id) => id === activeGame.player2_id).length / 2;
+    memoryScoreboard.textContent = activeGame.player1_name + ": " + p1Pairs + "    " + activeGame.player2_name + ": " + p2Pairs;
+  }
+
+  function resolveMemoryPair(row, a, b, actorId) {
+    const s = row.state;
+    const isMatch = s.deck[a] === s.deck[b];
+    const matched = s.matched.slice();
+    const matchedBy = s.matchedBy.slice();
+    if (isMatch) {
+      matched[a] = true; matched[b] = true;
+      matchedBy[a] = actorId; matchedBy[b] = actorId;
+    }
+    const allMatched = matched.every(Boolean);
+    const otherId = row.player1_id === actorId ? row.player2_id : row.player1_id;
+    const patch = { state: Object.assign({}, s, { flipped: [], matched, matchedBy }) };
+    if (allMatched) {
+      const p1Pairs = matchedBy.filter((id) => id === row.player1_id).length;
+      const p2Pairs = matchedBy.filter((id) => id === row.player2_id).length;
+      patch.status = "finished";
+      patch.winner = p1Pairs === p2Pairs ? "tie" : (p1Pairs > p2Pairs ? row.player1_id : row.player2_id);
+    } else {
+      patch.turn = isMatch ? actorId : otherId;
+    }
+    commitGameUpdate(row, patch);
+  }
+
+  function playMemoryCard(i) {
+    if (!activeGame || activeGame.type !== "memory" || activeGame.status !== "active" || activeGame.turn !== myClientId) return;
+    const state = activeGame.state;
+    if (state.matched[i] || state.flipped.indexOf(i) !== -1 || state.flipped.length >= 2) return;
+
+    const flipped = state.flipped.concat([i]);
+    commitGameUpdate(activeGame, { state: Object.assign({}, state, { flipped }) });
+
+    if (flipped.length === 2) {
+      const a = flipped[0];
+      const b = flipped[1];
+      const gameId = activeGame.id;
+      setTimeout(() => {
+        if (!activeGame || activeGame.id !== gameId) return;
+        if (activeGame.state.flipped.length === 2) resolveMemoryPair(activeGame, a, b, myClientId);
+      }, 900);
+    }
+  }
+
+  function makeBotMemoryMove(row) {
+    const state = row.state;
+    const available = state.deck.map((_, i) => i).filter((i) => !state.matched[i]);
+    if (available.length < 2) return;
+    const a = available[Math.floor(Math.random() * available.length)];
+    const rest = available.filter((x) => x !== a);
+    const b = rest[Math.floor(Math.random() * rest.length)];
+    commitGameUpdate(row, { state: Object.assign({}, state, { flipped: [a, b] }) });
+    const gameId = row.id;
+    setTimeout(() => {
+      if (!activeGame || activeGame.id !== gameId) return;
+      if (activeGame.turn === TEST_BOT_ID) resolveMemoryPair(activeGame, a, b, TEST_BOT_ID);
+    }, 900);
+  }
+
+  // ---------- Wordle duel ----------
+
+  function evaluateGuess(guess, secret) {
+    const result = new Array(5).fill("absent");
+    const secretLetters = secret.split("");
+    const guessLetters = guess.split("");
+    const used = new Array(5).fill(false);
+
+    guessLetters.forEach((ch, i) => {
+      if (ch === secretLetters[i]) { result[i] = "correct"; used[i] = true; }
+    });
+    guessLetters.forEach((ch, i) => {
+      if (result[i] === "correct") return;
+      const idx = secretLetters.findIndex((s, j) => s === ch && !used[j]);
+      if (idx !== -1) { result[i] = "present"; used[idx] = true; }
+    });
+    return result;
+  }
+
+  function renderWordleBoard() {
+    const state = activeGame.state;
+    wordleRows.innerHTML = "";
+    for (let r = 0; r < state.maxGuesses; r++) {
+      const guess = state.guesses[r];
+      const rowEl = document.createElement("div");
+      rowEl.className = "wordle-row";
+      for (let c = 0; c < 5; c++) {
+        const cell = document.createElement("span");
+        cell.className = "wordle-cell" + (guess ? " " + guess.result[c] : "");
+        cell.textContent = guess ? guess.word[c] : "";
+        rowEl.appendChild(cell);
+      }
+      const who = document.createElement("span");
+      who.className = "wordle-row-by";
+      who.textContent = guess
+        ? (guess.by === activeGame.player1_id ? activeGame.player1_name : guess.by === TEST_BOT_ID ? TEST_BOT_NAME : activeGame.player2_name)
+        : "";
+      rowEl.appendChild(who);
+      wordleRows.appendChild(rowEl);
+    }
+    const myTurn = activeGame.turn === myClientId && activeGame.status === "active";
+    wordleGuessForm.hidden = !myTurn;
+    wordleError.hidden = true;
+    wordleGuessInput.value = "";
+    if (myTurn) wordleGuessInput.focus();
+  }
+
+  function submitWordleGuess(row, word, actorId) {
+    const state = row.state;
+    const result = evaluateGuess(word, state.secret);
+    const guesses = state.guesses.concat([{ by: actorId, word, result }]);
+    const won = result.every((r) => r === "correct");
+    const outOfGuesses = guesses.length >= state.maxGuesses;
+    const otherId = row.player1_id === actorId ? row.player2_id : row.player1_id;
+
+    const patch = { state: Object.assign({}, state, { guesses }) };
+    if (won) { patch.status = "finished"; patch.winner = actorId; }
+    else if (outOfGuesses) { patch.status = "finished"; patch.winner = "tie"; }
+    else { patch.turn = otherId; }
+    commitGameUpdate(row, patch);
+  }
+
+  function makeBotWordleGuess(row) {
+    const state = row.state;
+    const used = new Set(state.guesses.map((g) => g.word));
+    let pool = WORDLE_WORDS.filter((w) => !used.has(w.toUpperCase()));
+    if (pool.length === 0) pool = WORDLE_WORDS;
+    submitWordleGuess(row, pickRandom(pool).toUpperCase(), TEST_BOT_ID);
+  }
+
+  wordleGuessForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!activeGame || activeGame.type !== "wordle" || activeGame.status !== "active" || activeGame.turn !== myClientId) return;
+    const word = wordleGuessInput.value.trim().toUpperCase();
+    if (!/^[A-Z]{5}$/.test(word)) {
+      wordleError.textContent = "Enter a 5-letter word.";
+      wordleError.hidden = false;
+      return;
+    }
+    submitWordleGuess(activeGame, word, myClientId);
+  });
+
   // ---------- Networking / realtime ----------
   async function fetchInitialState() {
     const { data, error } = await sb.from("timer_state").select("*").eq("id", 1).single();
@@ -499,9 +1046,8 @@
   }
 
   function subscribeToRoom() {
-    const clientId = getOrCreateClientId();
     const channel = sb.channel(cfg.ROOM_NAME, {
-      config: { presence: { key: clientId } },
+      config: { presence: { key: myClientId } },
     });
 
     channel.on("presence", { event: "sync" }, () => {
@@ -529,6 +1075,16 @@
       (payload) => applyTimerState(payload.new)
     );
 
+    // No per-row filter here (Realtime's filter syntax can't express "either
+    // column matches my id" in one clause) -- with just six people and the
+    // occasional break-time game, it's cheap enough to receive every games
+    // row change and let handleGameRow() ignore the ones that aren't mine.
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "games" },
+      (payload) => handleGameRow(payload.new)
+    );
+
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await channel.track({ name: identity.name, emoji: identity.emoji });
@@ -536,11 +1092,28 @@
     });
   }
 
+  async function fetchMyActiveGame() {
+    const { data, error } = await sb
+      .from("games")
+      .select("*")
+      .or("player1_id.eq." + myClientId + ",player2_id.eq." + myClientId)
+      .in("status", ["pending", "active"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) {
+      console.error("Could not load in-progress game:", error);
+      return;
+    }
+    if (data && data[0]) handleGameRow(data[0]);
+  }
+
   function enterRoom() {
+    myClientId = getOrCreateClientId();
     entryScreen.hidden = true;
     roomScreen.hidden = false;
     subscribeToRoom();
     fetchInitialState();
+    fetchMyActiveGame();
   }
 
   // ---------- Boot ----------

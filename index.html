@@ -21,6 +21,21 @@
 
   <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" aria-label="Switch to night mode" title="Switch to night mode">🌙</button>
 
+  <!-- Break-game challenge toasts: fixed position, shown regardless of what
+       else is on screen -->
+  <div id="challenge-incoming" class="challenge-toast" hidden>
+    <p id="challenge-incoming-text"></p>
+    <div class="challenge-toast-actions">
+      <button id="challenge-accept-btn" class="primary-btn" type="button">Accept</button>
+      <button id="challenge-decline-btn" class="secondary-btn" type="button">Decline</button>
+    </div>
+  </div>
+
+  <div id="challenge-outgoing" class="challenge-toast" hidden>
+    <p id="challenge-outgoing-text"></p>
+    <button id="challenge-cancel-btn" class="secondary-btn" type="button">Cancel</button>
+  </div>
+
   <!-- Entry screen: pick name + emoji before joining the room -->
   <div id="entry-screen" class="screen">
     <div class="entry-card">
@@ -87,6 +102,13 @@
         <button id="end-timer-btn" class="end-timer-btn" type="button">End timer</button>
       </section>
 
+      <!-- Break-only: challenge a present teammate to a quick game -->
+      <section id="break-games-panel" class="panel entrance" hidden>
+        <p class="countdown-mode-label">🎮 Break room games</p>
+        <div id="game-opponent-list" class="game-opponent-list"></div>
+        <p id="game-empty-hint" class="game-empty-hint">No one else is here yet to challenge.</p>
+      </section>
+
     </main>
 
     <!-- Full-screen "time's up" overlay, dismissed by a click anywhere -->
@@ -98,6 +120,33 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Break-game play area. A body-level overlay (like done-overlay) so it
+       can show regardless of the picker/countdown state underneath. -->
+  <div id="game-overlay" class="game-overlay" hidden>
+    <div class="game-overlay-card">
+      <div class="game-overlay-header">
+        <p id="game-title" class="game-title"></p>
+        <p id="game-turn-indicator" class="game-turn-indicator"></p>
+      </div>
+
+      <div id="memory-board" class="memory-board" hidden></div>
+      <p id="memory-scoreboard" class="memory-scoreboard" hidden></p>
+
+      <div id="wordle-board" class="wordle-board" hidden>
+        <div id="wordle-rows" class="wordle-rows"></div>
+        <form id="wordle-guess-form" class="wordle-guess-form">
+          <input id="wordle-guess-input" class="wordle-guess-input" maxlength="5" autocomplete="off" placeholder="Guess" />
+          <button type="submit" class="secondary-btn">Guess</button>
+        </form>
+        <p id="wordle-error" class="entry-error" hidden></p>
+      </div>
+
+      <p id="game-result" class="game-result" hidden></p>
+
+      <button id="game-close-btn" class="secondary-btn game-close-btn" type="button">Close</button>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

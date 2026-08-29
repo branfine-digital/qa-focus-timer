@@ -39,3 +39,44 @@ alter publication supabase_realtime add table timer_state;
 -- label. One is picked at random when a timer starts and stored here so
 -- everyone in the room sees the same line for that session.
 alter table timer_state add column if not exists header_text text;
+
+-- Added later: break-room games (Memory Match / Wordle Duel). One row per
+-- challenge/game -- same "single shared row that everyone reads via
+-- Realtime" pattern as timer_state above, just one row per game instead of
+-- a single fixed row.
+create extension if not exists pgcrypto;
+
+create table if not exists games (
+  id uuid primary key default gen_random_uuid(),
+  type text not null,                    -- 'memory' | 'wordle'
+  status text not null default 'pending', -- 'pending' | 'active' | 'declined' | 'finished' | 'abandoned'
+  player1_id text not null,              -- the challenger (goes first)
+  player1_name text not null,
+  player2_id text not null,
+  player2_name text not null,
+  turn text,                             -- client id of whoever's turn it is
+  winner text,                           -- client id of the winner, 'tie', or null
+  state jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table games enable row level security;
+
+drop policy if exists "Allow anonymous read" on games;
+create policy "Allow anonymous read"
+  on games for select
+  using (true);
+
+drop policy if exists "Allow anonymous insert" on games;
+create policy "Allow anonymous insert"
+  on games for insert
+  with check (true);
+
+drop policy if exists "Allow anonymous update" on games;
+create policy "Allow anonymous update"
+  on games for update
+  using (true)
+  with check (true);
+
+alter publication supabase_realtime add table games;
