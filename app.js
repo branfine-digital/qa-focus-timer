@@ -89,6 +89,40 @@
   stripEntranceOnce(countdownPanel);
   document.querySelectorAll(".bubble").forEach((btn) => stripEntranceOnce(btn));
 
+  // ---------- Theme (day/night) ----------
+  // The inline script at the top of index.html already applied the saved
+  // theme (if any) to <html> before first paint, so there's no flash of the
+  // wrong theme while this file loads. From here on we just keep the
+  // toggle button's icon in sync and persist future choices.
+  const THEME_KEY = "qa_focus_theme";
+  const themeToggleBtn = document.getElementById("theme-toggle-btn");
+
+  function currentTheme() {
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  }
+
+  function syncThemeToggleIcon() {
+    const isDark = currentTheme() === "dark";
+    themeToggleBtn.textContent = isDark ? "☀️" : "🌙";
+    const label = isDark ? "Switch to day mode" : "Switch to night mode";
+    themeToggleBtn.setAttribute("aria-label", label);
+    themeToggleBtn.title = label;
+  }
+
+  syncThemeToggleIcon();
+
+  themeToggleBtn.addEventListener("click", () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    syncThemeToggleIcon();
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (e) {
+      // Private browsing / storage disabled -- theme still applies for this
+      // visit, it just won't be remembered next time.
+    }
+  });
+
   const RING_RADIUS = 90;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
   countdownRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
