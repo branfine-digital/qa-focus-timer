@@ -22,6 +22,13 @@
     "Currently in a stable build of you",
     "Focus.exe is running",
     "Building, not browsing",
+    "Executing tasks.exe. Please do not force quit.",
+    "Currently allergic to Slack notifications",
+    "In the zone. In the void. Same thing.",
+    "This is not a drill. Okay it's kind of a drill.",
+    "Currently unbotherable",
+    "If you can read this, you're interrupting me",
+    "Doing the thing. The thing is happening.",
   ];
   const BREAK_HEADERS = [
     "Now testing: your patience",
@@ -34,6 +41,12 @@
     "Pending human, please wait",
     "Running a break on yourself",
     "Currently out of office (mentally)",
+    "Gone to touch grass, back in a few",
+    "Currently negotiating with my snack drawer",
+    "On a break. My inbox is on a bigger one.",
+    "Contractually obligated to sit down for a bit",
+    "Off the clock, on the couch (mentally)",
+    "Legally required to stare at a wall now",
   ];
 
   function pickRandom(list) {
