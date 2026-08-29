@@ -21,6 +21,10 @@
   --danger: #c0392b;
   --shadow: 0 12px 30px rgba(60, 40, 20, 0.12);
   --chip-shadow: 0 3px 10px rgba(60, 40, 20, 0.08);
+  --wordle-correct: #6aaa64;
+  --wordle-present: #c9b458;
+  --wordle-absent: #9aa5b1;
+  --overlay-backdrop: rgba(47, 42, 38, 0.55);
   font-size: 16px;
 }
 
@@ -52,6 +56,10 @@ html[data-theme="dark"] {
   --danger: #ff7a6b;
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
   --chip-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  --wordle-correct: #5aa858;
+  --wordle-present: #c2b04a;
+  --wordle-absent: #454c66;
+  --overlay-backdrop: rgba(5, 7, 14, 0.72);
 }
 
 * { box-sizing: border-box; }
@@ -451,7 +459,147 @@ body {
   60%, 100% { transform: rotate(0deg); }
 }
 
+/* ---------- Break games ---------- */
+
+.game-opponent-list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.5rem; }
+.game-opponent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--chip-bg);
+  border-radius: 14px;
+  padding: 0.6rem 0.85rem;
+  transition: background-color 0.25s ease;
+}
+.game-opponent-name { font-weight: 600; }
+.game-challenge-btn {
+  border: none;
+  background: var(--card-bg);
+  color: var(--ink);
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-left: 0.4rem;
+  transition: transform 0.12s ease, background-color 0.25s ease;
+}
+.game-challenge-btn:hover { transform: translateY(-1px); }
+.game-empty-hint { color: var(--ink-soft); font-size: 0.9rem; text-align: center; margin: 0.5rem 0 0; }
+
+/* Challenge toasts -- fixed so they show up no matter what's underneath */
+.challenge-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 95;
+  background: var(--card-bg);
+  color: var(--ink);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 1rem 1.25rem;
+  max-width: 92vw;
+  width: 360px;
+  text-align: center;
+  animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.challenge-toast p { margin: 0 0 0.75rem; font-weight: 600; }
+.challenge-toast-actions { display: flex; gap: 0.5rem; justify-content: center; }
+.challenge-toast-actions .primary-btn,
+.challenge-toast-actions .secondary-btn,
+.challenge-toast .secondary-btn { width: auto; flex: 1; }
+
+/* Game overlay */
+.game-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 92;
+  padding: 1rem;
+}
+.game-overlay-card {
+  background: var(--card-bg);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  text-align: center;
+  animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: background-color 0.25s ease;
+}
+.game-overlay-header { margin-bottom: 1rem; }
+.game-title { font-weight: 700; font-size: 1.1rem; margin: 0 0 0.25rem; }
+.game-turn-indicator { color: var(--ink-soft); font-size: 0.9rem; margin: 0; }
+.game-result { font-weight: 700; font-size: 1.15rem; margin: 0.5rem 0 1rem; }
+.game-rematch-hint { color: var(--ink-soft); font-size: 0.85rem; margin: 0 0 1rem; font-style: italic; }
+.game-result-actions { display: flex; gap: 0.6rem; justify-content: center; margin-top: 1.25rem; }
+.game-play-again-btn, .game-close-btn { width: auto; padding-left: 1.5rem; padding-right: 1.5rem; }
+
+/* Memory match */
+.memory-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 0 auto 0.75rem;
+}
+.memory-card {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 12px;
+  background: var(--chip-bg);
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.25s ease;
+}
+.memory-card:disabled { cursor: default; }
+.memory-card.flipped { background: var(--card-bg); box-shadow: inset 0 0 0 2px var(--work); }
+.memory-card.matched { background: var(--card-bg); box-shadow: inset 0 0 0 2px var(--break); opacity: 0.7; }
+.memory-scoreboard { color: var(--ink-soft); font-size: 0.9rem; margin: 0 0 0.5rem; }
+
+/* Wordle duel */
+.wordle-rows { display: flex; flex-direction: column; gap: 0.35rem; align-items: center; margin-bottom: 1rem; }
+.wordle-row { display: flex; align-items: center; gap: 0.3rem; }
+.wordle-cell {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--chip-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--ink);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+.wordle-cell.correct { background: var(--wordle-correct); color: white; }
+.wordle-cell.present { background: var(--wordle-present); color: white; }
+.wordle-cell.absent { background: var(--wordle-absent); color: white; }
+.wordle-row-by { font-size: 0.75rem; color: var(--ink-soft); margin-left: 0.4rem; min-width: 60px; text-align: left; }
+.wordle-guess-form { display: flex; gap: 0.5rem; justify-content: center; }
+.wordle-guess-input {
+  width: 140px;
+  padding: 0.5rem 0.6rem;
+  border-radius: 12px;
+  border: 2px solid var(--border-soft);
+  font-size: 1rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--card-bg);
+  color: var(--ink);
+}
+
 @media (max-width: 480px) {
   .bubble { width: 78px; height: 78px; font-size: 1.3rem; }
   .countdown-display { font-size: 3.2rem; }
+  .wordle-cell { width: 36px; height: 36px; font-size: 1rem; }
 }
