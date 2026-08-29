@@ -33,3 +33,9 @@ create policy "Allow anonymous update"
 
 -- Make sure changes to this table are pushed out over Realtime.
 alter publication supabase_realtime add table timer_state;
+
+-- Added later: rotating fun headers ("Time to lock in", "Now testing: your
+-- patience", etc.) shown instead of the plain "Work session" / "Break"
+-- label. One is picked at random when a timer starts and stored here so
+-- everyone in the room sees the same line for that session.
+alter table timer_state add column if not exists header_text text;

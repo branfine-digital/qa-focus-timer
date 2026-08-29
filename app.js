@@ -9,6 +9,57 @@
   const IDENTITY_KEY = "qa_focus_identity";
   const CLIENT_ID_KEY = "qa_focus_client_id";
 
+  // Rotating headers -- one is picked at random whenever a timer is started,
+  // and stored on the shared row so the whole room sees the same line.
+  const WORK_HEADERS = [
+    "Time to lock in",
+    "Deploying focus mode",
+    "No bugs, just brains",
+    "Heads down, tabs closed",
+    "Sprint mode: engaged",
+    "QA-ing your own productivity",
+    "Zero known issues with this focus block",
+    "Currently in a stable build of you",
+    "Focus.exe is running",
+    "Building, not browsing",
+  ];
+  const BREAK_HEADERS = [
+    "Now testing: your patience",
+    "On break. Do not deploy to live page.",
+    "Refilling coffee, not tasks",
+    "Status: away, results pending",
+    "Regression testing your relaxation skills",
+    "Snack break: additional steps optional",
+    "Stretch it like a Sprint MVP™",
+    "Pending human, please wait",
+    "Running a break on yourself",
+    "Currently out of office (mentally)",
+  ];
+
+  function pickRandom(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // .panel and .bubble carry a one-time "pop-in" arrival animation via the
+  // .entrance class (see style.css). Toggling an element's `hidden`
+  // attribute restarts any CSS animation on it, so if pop-in stayed on the
+  // base class it would replay every time the picker panel/bubbles come
+  // back after a timer ends -- a visible disappear-then-reappear flash.
+  // Stripping .entrance after its first play makes it a true one-shot, while
+  // bubble-idle (which never touches opacity) stays on the base class and
+  // can safely restart forever.
+  function stripEntranceOnce(el) {
+    if (!el) return;
+    el.addEventListener(
+      "animationend",
+      function onEntranceEnd(e) {
+        if (e.animationName !== "pop-in") return;
+        el.classList.remove("entrance");
+        el.removeEventListener("animationend", onEntranceEnd);
+      }
+    );
+  }
+
   // ---------- DOM ----------
   const entryScreen = document.getElementById("entry-screen");
   const roomScreen = document.getElementById("room-screen");
@@ -29,8 +80,20 @@
   const countdownDisplay = document.getElementById("countdown-display");
   const countdownModeLabel = document.getElementById("countdown-mode-label");
   const countdownStartedBy = document.getElementById("countdown-started-by");
+  const countdownRingWrap = document.getElementById("countdown-ring-wrap");
+  const countdownRingProgress = document.getElementById("countdown-ring-progress");
   const endTimerBtn = document.getElementById("end-timer-btn");
   const doneOverlay = document.getElementById("done-overlay");
+
+  stripEntranceOnce(pickerPanel);
+  stripEntranceOnce(countdownPanel);
+  document.querySelectorAll(".bubble").forEach((btn) => stripEntranceOnce(btn));
+
+  const RING_RADIUS = 90;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+  countdownRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+  countdownRingProgress.style.strokeDashoffset = "0";
+  let activeGhost = null;
 
   // ---------- State ----------
   let selectedEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
@@ -136,12 +199,6 @@
   }
 
   // ---------- Room screen ----------
-  function replayEntrance(el) {
-    el.style.animation = "none";
-    void el.offsetWidth; // force reflow
-    el.style.animation = "";
-  }
-
   function renderPresence(state) {
     presenceBar.innerHTML = "";
     Object.values(state).forEach((entries) => {
@@ -161,19 +218,55 @@
     return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
   }
 
+  // The picker/countdown swap itself is instant (no fade or hide delay --
+  // that's what was causing the "empty box, then a pause" feeling). This
+  // ghost is a purely decorative circle that visually grows from the
+  // clicked bubble's spot into the countdown panel's spot and fades out,
+  // papering over that instant swap so it *looks* like the bubble morphed
+  // into the countdown rather than an abrupt cut.
+  function morphBubbleIntoCountdown(startRect, background) {
+    const endRect = countdownPanel.getBoundingClientRect();
+
+    if (activeGhost) activeGhost.remove();
+
+    const ghost = document.createElement("div");
+    ghost.className = "morph-ghost";
+    Object.assign(ghost.style, {
+      left: startRect.left + "px",
+      top: startRect.top + "px",
+      width: startRect.width + "px",
+      height: startRect.height + "px",
+      borderRadius: "999px",
+      background,
+    });
+    document.body.appendChild(ghost);
+    activeGhost = ghost;
+
+    const anim = ghost.animate(
+      [
+        { left: startRect.left + "px", top: startRect.top + "px", width: startRect.width + "px", height: startRect.height + "px", borderRadius: "999px", opacity: 1 },
+        { left: endRect.left + "px", top: endRect.top + "px", width: endRect.width + "px", height: endRect.height + "px", borderRadius: "28px", opacity: 0 },
+      ],
+      { duration: 380, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" }
+    );
+    anim.onfinish = () => {
+      ghost.remove();
+      if (activeGhost === ghost) activeGhost = null;
+    };
+  }
+
   function showPicker() {
     doneOverlay.hidden = true;
     countdownPanel.hidden = true;
     pickerPanel.hidden = false;
-    replayEntrance(pickerPanel);
-    document.querySelectorAll(".bubble").forEach(replayEntrance);
   }
 
   function showCountdown(row) {
     pickerPanel.hidden = true;
     doneOverlay.hidden = true;
     countdownPanel.hidden = false;
-    countdownModeLabel.textContent = row.mode === "work" ? "Work session" : "Break";
+    countdownPanel.classList.toggle("mode-break", row.mode === "break");
+    countdownModeLabel.textContent = row.header_text || (row.mode === "work" ? "Work session" : "Break");
     countdownStartedBy.textContent = row.started_by ? "Started by " + row.started_by : "";
   }
 
@@ -197,11 +290,14 @@
     if (!row || row.mode === "idle" || !row.ends_at) {
       inDoneState = false;
       stopChimeLoop();
+      countdownRingProgress.style.strokeDashoffset = "0";
+      countdownRingWrap.classList.remove("final-stretch");
       showPicker();
       return;
     }
 
     const endsAtMs = new Date(row.ends_at).getTime();
+    const totalMs = (row.duration_sec || 0) * 1000;
 
     const tick = () => {
       const remaining = endsAtMs - Date.now();
@@ -217,25 +313,50 @@
       if (inDoneState) return; // already transitioned, wait for reset
       showCountdown(row);
       countdownDisplay.textContent = formatTime(remaining);
+      if (totalMs > 0) {
+        const elapsedFraction = Math.min(1, Math.max(0, (totalMs - remaining) / totalMs));
+        countdownRingProgress.style.strokeDashoffset = String(RING_CIRCUMFERENCE * elapsedFraction);
+        countdownRingWrap.classList.toggle("final-stretch", elapsedFraction >= 0.8);
+      }
     };
 
     tick();
     tickTimer = setInterval(tick, 250);
   }
 
-  async function startTimer(mode, minutes) {
-    if (!minutes || minutes <= 0) return;
+  // Building the payload once and reusing it for both the instant local
+  // preview and the real database write guarantees they show the exact same
+  // end time and header line -- no mismatch to reconcile when realtime
+  // confirms it a moment later.
+  function buildStartPayload(mode, minutes) {
     const now = new Date();
     const endsAt = new Date(now.getTime() + minutes * 60 * 1000);
-    const { error } = await sb.from("timer_state").update({
+    return {
       mode,
       duration_sec: minutes * 60,
       started_at: now.toISOString(),
       ends_at: endsAt.toISOString(),
       started_by: identity.emoji + " " + identity.name,
-      updated_at: now.toISOString(),
+      header_text: pickRandom(mode === "work" ? WORK_HEADERS : BREAK_HEADERS),
+    };
+  }
+
+  async function startTimer(payload) {
+    const { error } = await sb.from("timer_state").update({
+      ...payload,
+      updated_at: new Date().toISOString(),
     }).eq("id", 1);
-    if (error) console.error("Failed to start timer:", error);
+    if (error) {
+      console.error("Failed to start timer:", error);
+      // The countdown was already shown optimistically -- if the write
+      // failed, nothing will ever arrive over realtime to correct it, so put
+      // the picker back ourselves instead of leaving the room stuck.
+      if (activeGhost) {
+        activeGhost.remove();
+        activeGhost = null;
+      }
+      showPicker();
+    }
   }
 
   async function resetRoom() {
@@ -245,6 +366,7 @@
       started_at: null,
       ends_at: null,
       started_by: null,
+      header_text: null,
       updated_at: new Date().toISOString(),
     }).eq("id", 1);
     if (error) console.error("Failed to reset room:", error);
@@ -263,7 +385,31 @@
   document.querySelectorAll(".bubble").forEach((btn) => {
     btn.addEventListener("click", () => {
       const minutes = parseInt(btn.dataset.minutes, 10);
-      startTimer(activeMode, minutes);
+      btn.classList.remove("squish");
+      void btn.offsetWidth; // restart the squish animation if clicked again quickly
+      btn.classList.add("squish");
+      btn.addEventListener(
+        "animationend",
+        (e) => {
+          // Only clear our own squish animation -- leave the idle-bob animation
+          // (which fires its own animationend on every loop) alone, and make
+          // sure the bubble goes right back to bobbing forever, clicked or not.
+          if (e.animationName === "bubble-squish") btn.classList.remove("squish");
+        }
+      );
+
+      // Capture the bubble's on-screen spot and look *before* anything else
+      // changes, then show the countdown immediately using locally-known
+      // values -- no waiting on the network round trip before the next
+      // screen appears. The ghost animation papers over the instant swap.
+      const startRect = btn.getBoundingClientRect();
+      const computed = getComputedStyle(btn);
+      const ghostBackground = computed.backgroundImage !== "none" ? computed.backgroundImage : computed.backgroundColor;
+
+      const payload = buildStartPayload(activeMode, minutes);
+      applyTimerState(payload);
+      morphBubbleIntoCountdown(startRect, ghostBackground);
+      startTimer(payload);
     });
   });
 
@@ -273,11 +419,14 @@
       customMinutesInput.focus();
       return;
     }
-    startTimer(activeMode, minutes);
+    const payload = buildStartPayload(activeMode, minutes);
+    applyTimerState(payload);
+    startTimer(payload);
     customMinutesInput.value = "";
   });
 
   doneOverlay.addEventListener("click", () => {
+    applyTimerState({ mode: "idle" });
     resetRoom();
   });
 
@@ -286,6 +435,7 @@
   // returns to the picker, with no chime since it wasn't a natural finish.
   endTimerBtn.addEventListener("click", (event) => {
     event.stopPropagation();
+    applyTimerState({ mode: "idle" });
     resetRoom();
   });
 
