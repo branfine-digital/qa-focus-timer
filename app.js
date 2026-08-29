@@ -54,21 +54,25 @@
   }
 
   // ---------- Break games ----------
-  // Real games draw their secret word from the server-side "wordle_pool"
-  // table via the pick_wordle_word() RPC (see supabase-schema.sql), which
-  // hands out all 100 of Bran's words in random order with no repeats
-  // until the whole list has been used, shared across the whole team. This
-  // local list is only a fallback (if that RPC isn't set up yet) and the
-  // word source for games against the preview-only test bot, which
-  // deliberately doesn't touch the real team-wide rotation.
+  // This is Bran's real 100-word list. Real games draw their secret word
+  // from the server-side "wordle_pool" table via the pick_wordle_word()
+  // RPC (see supabase-schema.sql), which hands out all 100 in random
+  // order with no repeats until the whole list has been used, shared
+  // across the whole team. The copy here is only a fallback (if that RPC
+  // isn't set up yet) and the word source for games against the
+  // preview-only test bot, which deliberately doesn't touch the real
+  // team-wide rotation.
   const WORDLE_WORDS = [
-    "APPLE","BEACH","BRAVE","BREAD","BRICK","CHESS","CHILL","CLOUD","CRISP","DAISY",
-    "DELTA","DOUGH","DRIFT","EAGLE","EARTH","FANCY","FIELD","FLAME","FLASH","FRESH",
-    "GHOST","GRAPE","GRASS","GREEN","HAPPY","HEART","HONEY","HOUSE","IVORY","JOLLY",
-    "LEMON","LIGHT","MANGO","MAPLE","MUSIC","NOBLE","NORTH","OCEAN","PAPER","PEACH",
-    "PIXEL","PLANT","QUIET","RIVER","ROBOT","SMILE","SNACK","SNOWY","SOLAR","SPARK",
-    "STONE","STORM","SUGAR","SUNNY","SWIFT","TIGER","TOAST","TRAIN","TULIP","UNITY",
-    "VIVID","WATER","WHEAT","WITTY","ZEBRA",
+    "APPLE","BRAVE","CRANE","DREAM","ELBOW","FLAME","GRAPE","HOUSE","IVORY","JELLY",
+    "KNEEL","LEMON","MAPLE","NIGHT","OCEAN","PEARL","QUEEN","RIVER","STONE","TIGER",
+    "UNITY","VIVID","WHALE","YOUTH","ZEBRA","AMBER","BLOOM","CANDY","DANCE","EAGER",
+    "FROST","GIANT","HONEY","INDEX","JUDGE","KARMA","LIGHT","MANGO","NOBLE","OLIVE",
+    "PIANO","QUILT","ROBIN","SPICE","TABLE","URBAN","VAULT","WHEAT","YIELD","ADORN",
+    "BERRY","CHARM","DIARY","EARTH","FANCY","GLAZE","HEART","INLET","JOKER","KOALA",
+    "LUNAR","MEDAL","NERVE","OASIS","PEACH","QUIET","RADAR","SHEEP","TRAIL","UNCLE",
+    "VERSE","WITCH","XENON","YOUNG","ZESTY","ARENA","BLADE","CORAL","DINER","EVERY",
+    "FEVER","GLORY","HUMID","IDEAL","JOINT","KAYAK","LUCKY","MAGIC","NURSE","ORBIT",
+    "PROUD","RELAY","SCARF","THORN","UPPER","VISIT","WOMAN","EXTRA","SALAD","BRUSH",
   ];
   const MEMORY_EMOJIS = ["🍕", "🐙", "🚀", "🌵", "🎧", "🍩", "🦖", "🐝"]; // 8 pairs = 16 cards
 
@@ -147,6 +151,8 @@
   const wordleGuessInput = document.getElementById("wordle-guess-input");
   const wordleError = document.getElementById("wordle-error");
   const gameResult = document.getElementById("game-result");
+  const gameRematchHint = document.getElementById("game-rematch-hint");
+  const gamePlayAgainBtn = document.getElementById("game-play-again-btn");
   const gameCloseBtn = document.getElementById("game-close-btn");
 
   stripEntranceOnce(pickerPanel);
@@ -211,6 +217,15 @@
   let outgoingChallenge = null; // a game row I created, still status "pending"
   let incomingChallenge = null; // a game row where I'm player2, still "pending"
   let activeGame = null; // the game row currently shown in the play overlay
+  const rematchInFlight = new Set(); // game ids currently being re-created
+
+  const REMATCH_WAITING_LINES = [
+    "Waiting on {opp} to also want a rematch. No pressure.",
+    "Rematch requested. {opp} is currently... thinking about it.",
+    "Sent! {opp}'s move. Tapping foot intensifies.",
+    "Awaiting {opp}'s courage.",
+    "The ball is in {opp}'s court. This isn't tennis, but still.",
+  ];
 
   // ---------- Audio (synthesized, no external files) ----------
   function ensureAudioContext() {
@@ -742,9 +757,68 @@
       if (activeGame && activeGame.id === row.id) {
         activeGame = row;
         renderActiveGame();
+        maybeStartRematch(row);
       }
       renderGameOpponents();
     }
+  }
+
+  // Both players have to hit "Play again" before a rematch actually
+  // starts. Whichever side asks second triggers this on both ends (via
+  // the row update each "Play again" click writes); only the original
+  // challenger's own client ever creates the new game row, so two clients
+  // agreeing at the same instant can't create two rematches. rematchInFlight
+  // closes the (rare) window between deciding to start one and it actually
+  // being written, and the persisted rematch_started flag protects against
+  // the same thing across a page reload.
+  function maybeStartRematch(row) {
+    if (row.rematch_started || rematchInFlight.has(row.id)) return;
+    const rematchBy = row.rematch_by || [];
+    const bothWant = row.player2_id === TEST_BOT_ID
+      ? rematchBy.indexOf(row.player1_id) !== -1 // the bot always says yes
+      : rematchBy.indexOf(row.player1_id) !== -1 && rematchBy.indexOf(row.player2_id) !== -1;
+    if (!bothWant) return;
+    if (myClientId !== row.player1_id) return;
+    rematchInFlight.add(row.id);
+    startRematch(row);
+  }
+
+  async function startRematch(row) {
+    const isBot = row.player2_id === TEST_BOT_ID;
+    const presetSecret = row.type !== "wordle" ? undefined :
+      (isBot ? pickRandom(WORDLE_WORDS).toUpperCase() : await pickSharedWordleSecret());
+
+    const newRow = {
+      type: row.type,
+      status: "active",
+      player1_id: row.player1_id,
+      player1_name: row.player1_name,
+      player2_id: row.player2_id,
+      player2_name: row.player2_name,
+      turn: row.player1_id, // the original challenger goes first again
+      winner: null,
+      rematch_by: [],
+      rematch_started: false,
+      state: buildInitialGameState(row.type, presetSecret),
+    };
+
+    if (isBot) {
+      const fakeRow = Object.assign(
+        { id: "preview-" + Date.now(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+        newRow
+      );
+      handleGameRow(fakeRow);
+      return;
+    }
+
+    const { data, error } = await sb.from("games").insert(newRow).select().single();
+    if (error) {
+      console.error("Failed to start rematch:", error);
+      rematchInFlight.delete(row.id);
+      return;
+    }
+    commitGameUpdate(row, { rematch_started: true });
+    handleGameRow(data);
   }
 
   function onGameTurnChanged(row) {
@@ -860,6 +934,13 @@
     renderGameOpponents();
   });
 
+  gamePlayAgainBtn.addEventListener("click", () => {
+    if (!activeGame) return;
+    const rematchBy = activeGame.rematch_by || [];
+    if (rematchBy.indexOf(myClientId) !== -1) return; // already asked
+    commitGameUpdate(activeGame, { rematch_by: rematchBy.concat([myClientId]) });
+  });
+
   // ---------- Break games: rendering ----------
 
   function renderActiveGame() {
@@ -874,6 +955,8 @@
     const isDone = activeGame.status === "finished" || activeGame.status === "abandoned";
     gameResult.hidden = !isDone;
     gameTurnIndicator.hidden = isDone;
+    gamePlayAgainBtn.hidden = !isDone;
+    gameRematchHint.hidden = true;
 
     if (isDone) {
       if (activeGame.status === "abandoned") {
@@ -884,6 +967,22 @@
         gameResult.textContent = "🎉 You won!";
       } else {
         gameResult.textContent = (activeGame.winner === TEST_BOT_ID ? TEST_BOT_NAME : oppName) + " won!";
+      }
+
+      const rematchBy = activeGame.rematch_by || [];
+      const oppId = iAmP1 ? activeGame.player2_id : activeGame.player1_id;
+      const iWantRematch = rematchBy.indexOf(myClientId) !== -1;
+      const oppWantsRematch = rematchBy.indexOf(oppId) !== -1;
+
+      gamePlayAgainBtn.disabled = iWantRematch;
+      gamePlayAgainBtn.textContent = iWantRematch ? "Waiting for " + oppName + "..." : "Play again";
+
+      if (iWantRematch && !oppWantsRematch && oppId !== TEST_BOT_ID) {
+        gameRematchHint.hidden = false;
+        gameRematchHint.textContent = pickRandom(REMATCH_WAITING_LINES).replace("{opp}", oppName);
+      } else if (!iWantRematch && oppWantsRematch) {
+        gameRematchHint.hidden = false;
+        gameRematchHint.textContent = oppName + " wants a rematch! 👀";
       }
     } else {
       gameTurnIndicator.textContent =

@@ -161,3 +161,34 @@ end;
 $$;
 
 grant execute on function pick_wordle_word() to anon;
+
+-- Added later: swap the placeholder word bank for Bran's real 100-word
+-- list (no proper nouns, no onomatopoeia).
+update wordle_pool
+set all_words = ARRAY['APPLE','BRAVE','CRANE','DREAM','ELBOW','FLAME','GRAPE','HOUSE','IVORY','JELLY',
+                       'KNEEL','LEMON','MAPLE','NIGHT','OCEAN','PEARL','QUEEN','RIVER','STONE','TIGER',
+                       'UNITY','VIVID','WHALE','YOUTH','ZEBRA','AMBER','BLOOM','CANDY','DANCE','EAGER',
+                       'FROST','GIANT','HONEY','INDEX','JUDGE','KARMA','LIGHT','MANGO','NOBLE','OLIVE',
+                       'PIANO','QUILT','ROBIN','SPICE','TABLE','URBAN','VAULT','WHEAT','YIELD','ADORN',
+                       'BERRY','CHARM','DIARY','EARTH','FANCY','GLAZE','HEART','INLET','JOKER','KOALA',
+                       'LUNAR','MEDAL','NERVE','OASIS','PEACH','QUIET','RADAR','SHEEP','TRAIL','UNCLE',
+                       'VERSE','WITCH','XENON','YOUNG','ZESTY','ARENA','BLADE','CORAL','DINER','EVERY',
+                       'FEVER','GLORY','HUMID','IDEAL','JOINT','KAYAK','LUCKY','MAGIC','NURSE','ORBIT',
+                       'PROUD','RELAY','SCARF','THORN','UPPER','VISIT','WOMAN','EXTRA','SALAD','BRUSH'],
+    remaining = ARRAY['APPLE','BRAVE','CRANE','DREAM','ELBOW','FLAME','GRAPE','HOUSE','IVORY','JELLY',
+                       'KNEEL','LEMON','MAPLE','NIGHT','OCEAN','PEARL','QUEEN','RIVER','STONE','TIGER',
+                       'UNITY','VIVID','WHALE','YOUTH','ZEBRA','AMBER','BLOOM','CANDY','DANCE','EAGER',
+                       'FROST','GIANT','HONEY','INDEX','JUDGE','KARMA','LIGHT','MANGO','NOBLE','OLIVE',
+                       'PIANO','QUILT','ROBIN','SPICE','TABLE','URBAN','VAULT','WHEAT','YIELD','ADORN',
+                       'BERRY','CHARM','DIARY','EARTH','FANCY','GLAZE','HEART','INLET','JOKER','KOALA',
+                       'LUNAR','MEDAL','NERVE','OASIS','PEACH','QUIET','RADAR','SHEEP','TRAIL','UNCLE',
+                       'VERSE','WITCH','XENON','YOUNG','ZESTY','ARENA','BLADE','CORAL','DINER','EVERY',
+                       'FEVER','GLORY','HUMID','IDEAL','JOINT','KAYAK','LUCKY','MAGIC','NURSE','ORBIT',
+                       'PROUD','RELAY','SCARF','THORN','UPPER','VISIT','WOMAN','EXTRA','SALAD','BRUSH'],
+    updated_at = now()
+where id = 1;
+
+-- Added later: rematches. Both players have to opt in (rematch_by) before
+-- a fresh game starts; rematch_started guards against creating it twice.
+alter table games add column if not exists rematch_by text[] not null default '{}';
+alter table games add column if not exists rematch_started boolean not null default false;
