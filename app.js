@@ -54,8 +54,13 @@
   }
 
   // ---------- Break games ----------
-  // Placeholder word bank -- swap this out for Bran's real list whenever
-  // it's ready. Every entry must be exactly 5 letters.
+  // Real games draw their secret word from the server-side "wordle_pool"
+  // table via the pick_wordle_word() RPC (see supabase-schema.sql), which
+  // hands out all 100 of Bran's words in random order with no repeats
+  // until the whole list has been used, shared across the whole team. This
+  // local list is only a fallback (if that RPC isn't set up yet) and the
+  // word source for games against the preview-only test bot, which
+  // deliberately doesn't touch the real team-wide rotation.
   const WORDLE_WORDS = [
     "APPLE","BEACH","BRAVE","BREAD","BRICK","CHESS","CHILL","CLOUD","CRISP","DAISY",
     "DELTA","DOUGH","DRIFT","EAGLE","EARTH","FANCY","FIELD","FLAME","FLASH","FRESH",
@@ -647,7 +652,7 @@
     return a;
   }
 
-  function buildInitialGameState(gameType) {
+  function buildInitialGameState(gameType, presetSecret) {
     if (gameType === "memory") {
       const deck = shuffle(MEMORY_EMOJIS.concat(MEMORY_EMOJIS));
       return {
@@ -658,10 +663,26 @@
       };
     }
     return {
-      secret: pickRandom(WORDLE_WORDS).toUpperCase(),
+      secret: presetSecret || pickRandom(WORDLE_WORDS).toUpperCase(),
       guesses: [],
       maxGuesses: 6,
     };
+  }
+
+  // Pulls the next word from the shared, no-repeat-until-exhausted pool
+  // (see pick_wordle_word() in supabase-schema.sql). Falls back to the
+  // local placeholder list if that RPC isn't set up yet, so a real 1v1
+  // challenge still works (just without the no-repeat guarantee) rather
+  // than silently failing to start.
+  async function pickSharedWordleSecret() {
+    try {
+      const { data, error } = await sb.rpc("pick_wordle_word");
+      if (error || !data) throw error || new Error("pick_wordle_word returned nothing");
+      return String(data).toUpperCase();
+    } catch (e) {
+      console.error("wordle_pool RPC unavailable, falling back to the local word list:", e);
+      return pickRandom(WORDLE_WORDS).toUpperCase();
+    }
   }
 
   // ---------- Break games: challenge lifecycle ----------
@@ -757,6 +778,12 @@
 
   async function sendChallenge(opponent, gameType) {
     if (outgoingChallenge || incomingChallenge || activeGame) return;
+    const isBot = opponent.id === TEST_BOT_ID;
+    // Bot games are a solo sandbox for trying the UI -- draw from the local
+    // list instead of spending a word out of the real team-wide rotation.
+    const presetSecret = gameType !== "wordle" ? undefined :
+      isBot ? pickRandom(WORDLE_WORDS).toUpperCase() : await pickSharedWordleSecret();
+
     const baseRow = {
       type: gameType,
       status: "pending",
@@ -766,10 +793,10 @@
       player2_name: opponent.emoji + " " + opponent.name,
       turn: myClientId, // the challenger goes first
       winner: null,
-      state: buildInitialGameState(gameType),
+      state: buildInitialGameState(gameType, presetSecret),
     };
 
-    if (opponent.id === TEST_BOT_ID) {
+    if (isBot) {
       const fakeRow = Object.assign(
         { id: "preview-" + Date.now(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
         baseRow
