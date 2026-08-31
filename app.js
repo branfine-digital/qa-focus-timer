@@ -147,6 +147,7 @@
   const memoryScoreboard = document.getElementById("memory-scoreboard");
   const wordleBoard = document.getElementById("wordle-board");
   const wordleRows = document.getElementById("wordle-rows");
+  const wordleKeyboard = document.getElementById("wordle-keyboard");
   const wordleGuessForm = document.getElementById("wordle-guess-form");
   const wordleGuessInput = document.getElementById("wordle-guess-input");
   const wordleError = document.getElementById("wordle-error");
@@ -1079,6 +1080,44 @@
 
   // ---------- Wordle duel ----------
 
+  const WORDLE_KEYBOARD_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+  const WORDLE_LETTER_RANK = { absent: 0, present: 1, correct: 2 };
+
+  // A letter's keyboard color reflects the *best* status seen for it across
+  // every guess so far (from either player, since it's one shared board) --
+  // e.g. if "E" was marked absent in one guess but correct in another, it
+  // shows green, never downgraded back to gray. Same rule the real Wordle
+  // keyboard uses.
+  function computeLetterStatuses(guesses) {
+    const statuses = {};
+    guesses.forEach((g) => {
+      g.word.split("").forEach((letter, i) => {
+        const result = g.result[i];
+        if (!statuses[letter] || WORDLE_LETTER_RANK[result] > WORDLE_LETTER_RANK[statuses[letter]]) {
+          statuses[letter] = result;
+        }
+      });
+    });
+    return statuses;
+  }
+
+  function renderWordleKeyboard(guesses) {
+    const statuses = computeLetterStatuses(guesses);
+    wordleKeyboard.innerHTML = "";
+    WORDLE_KEYBOARD_ROWS.forEach((rowLetters) => {
+      const rowEl = document.createElement("div");
+      rowEl.className = "wordle-keyboard-row";
+      rowLetters.split("").forEach((letter) => {
+        const status = statuses[letter];
+        const key = document.createElement("span");
+        key.className = "wordle-key" + (status ? " " + status : "");
+        key.textContent = letter;
+        rowEl.appendChild(key);
+      });
+      wordleKeyboard.appendChild(rowEl);
+    });
+  }
+
   function evaluateGuess(guess, secret) {
     const result = new Array(5).fill("absent");
     const secretLetters = secret.split("");
@@ -1117,6 +1156,8 @@
       rowEl.appendChild(who);
       wordleRows.appendChild(rowEl);
     }
+    renderWordleKeyboard(state.guesses);
+
     const myTurn = activeGame.turn === myClientId && activeGame.status === "active";
     wordleGuessForm.hidden = !myTurn;
     wordleError.hidden = true;

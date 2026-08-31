@@ -584,6 +584,25 @@ body {
 .wordle-cell.present { background: var(--wordle-present); color: white; }
 .wordle-cell.absent { background: var(--wordle-absent); color: white; }
 .wordle-row-by { font-size: 0.75rem; color: var(--ink-soft); margin-left: 0.4rem; min-width: 60px; text-align: left; }
+.wordle-keyboard { display: flex; flex-direction: column; gap: 0.3rem; align-items: center; margin-bottom: 1rem; }
+.wordle-keyboard-row { display: flex; gap: 0.25rem; }
+.wordle-key {
+  min-width: 26px;
+  height: 32px;
+  padding: 0 0.2rem;
+  border-radius: 6px;
+  background: var(--chip-bg);
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+.wordle-key.correct { background: var(--wordle-correct); color: white; }
+.wordle-key.present { background: var(--wordle-present); color: white; }
+.wordle-key.absent { background: var(--wordle-absent); color: white; opacity: 0.55; }
 .wordle-guess-form { display: flex; gap: 0.5rem; justify-content: center; }
 .wordle-guess-input {
   width: 140px;
