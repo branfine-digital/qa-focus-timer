@@ -31,6 +31,16 @@
     </div>
   </div>
 
+  <!-- Super Challenge (host-started group Pictionary) invite, with a
+       30 second countdown to join -->
+  <div id="super-incoming" class="challenge-toast super-toast" hidden>
+    <p id="super-incoming-text"></p>
+    <div class="challenge-toast-actions">
+      <button id="super-join-btn" class="primary-btn" type="button">Join</button>
+      <button id="super-skip-btn" class="secondary-btn" type="button">Skip</button>
+    </div>
+  </div>
+
   <div id="challenge-outgoing" class="challenge-toast" hidden>
     <p id="challenge-outgoing-text"></p>
     <button id="challenge-cancel-btn" class="secondary-btn" type="button">Cancel</button>
@@ -105,6 +115,7 @@
       <!-- Break-only: challenge a present teammate to a quick game -->
       <section id="break-games-panel" class="panel entrance" hidden>
         <p class="countdown-mode-label">🎮 Break room games</p>
+        <button id="super-challenge-btn" class="primary-btn super-challenge-btn" type="button" hidden>⚡ Super Challenge: Pictionary for everyone</button>
         <div id="game-opponent-list" class="game-opponent-list"></div>
         <p id="game-empty-hint" class="game-empty-hint">No one else is here yet to challenge.</p>
       </section>
@@ -144,6 +155,55 @@
         <p id="wordle-error" class="entry-error" hidden></p>
       </div>
 
+      <!-- Super Challenge lobby: who's in, join countdown, host's Start button -->
+      <div id="pict-lobby" class="pict-lobby" hidden>
+        <p id="pict-lobby-status" class="pict-lobby-status"></p>
+        <ul id="pict-lobby-players" class="pict-lobby-players"></ul>
+        <p id="pict-lobby-extra" class="pict-lobby-extra"></p>
+        <button id="pict-lobby-start-btn" class="primary-btn pict-lobby-start-btn" type="button" hidden>Start now</button>
+      </div>
+
+      <!-- Pictionary (1v1 and Super Challenge) -->
+      <div id="pict-board" class="pict-board" hidden>
+        <div class="pict-topbar">
+          <span id="pict-round" class="pict-round"></span>
+          <span id="pict-timer" class="pict-timer">100</span>
+        </div>
+        <div class="pict-timer-bar"><div id="pict-timer-fill" class="pict-timer-fill"></div></div>
+        <p id="pict-prompt" class="pict-prompt"></p>
+
+        <div class="pict-layout">
+          <div class="pict-main">
+            <div id="pict-canvas-wrap" class="pict-canvas-wrap">
+              <canvas id="pict-canvas" class="pict-canvas"></canvas>
+              <div id="pict-reveal" class="pict-reveal" hidden></div>
+            </div>
+
+            <div id="pict-tools" class="pict-tools" hidden>
+              <div id="pict-colors" class="pict-colors"></div>
+              <div class="pict-tool-group">
+                <button type="button" class="pict-size-btn" data-size="3" title="Thin"><span style="width:4px;height:4px"></span></button>
+                <button type="button" class="pict-size-btn active" data-size="7" title="Medium"><span style="width:8px;height:8px"></span></button>
+                <button type="button" class="pict-size-btn" data-size="16" title="Thick"><span style="width:14px;height:14px"></span></button>
+                <button type="button" id="pict-eraser-btn" class="pict-tool-btn" title="Eraser">🧽</button>
+                <button type="button" id="pict-undo-btn" class="pict-tool-btn" title="Undo">↩️</button>
+                <button type="button" id="pict-clear-btn" class="pict-tool-btn" title="Clear">🗑️</button>
+              </div>
+            </div>
+
+            <form id="pict-guess-form" class="pict-guess-form" hidden>
+              <input id="pict-guess-input" class="pict-guess-input" maxlength="40" autocomplete="off" placeholder="Type your guess" />
+              <button type="submit" class="secondary-btn">Guess</button>
+            </form>
+          </div>
+
+          <div class="pict-side">
+            <ul id="pict-scores" class="pict-scores"></ul>
+            <ul id="pict-feed" class="pict-feed" aria-live="polite"></ul>
+          </div>
+        </div>
+      </div>
+
       <p id="game-result" class="game-result" hidden></p>
       <p id="game-rematch-hint" class="game-rematch-hint" hidden></p>
 
@@ -156,6 +216,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <script src="pictionary-words.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

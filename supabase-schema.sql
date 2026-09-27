@@ -192,3 +192,86 @@ where id = 1;
 -- a fresh game starts; rematch_started guards against creating it twice.
 alter table games add column if not exists rematch_by text[] not null default '{}';
 alter table games add column if not exists rematch_started boolean not null default false;
+
+-- Added later: Pictionary (1v1 challenges and host-only "Super Challenge"
+-- group games). Game rows reuse the existing `games` table (type
+-- 'pictionary' or 'pictionary_group'), so no new columns are needed. Two
+-- small helpers make it fair:
+--
+-- 1) server_now(): every browser asks the database for the time once when
+--    it joins, so round timers and "points = seconds left" line up for
+--    everyone even if someone's computer clock is off.
+create or replace function server_now()
+returns timestamptz
+language sql
+stable
+as $$ select now() $$;
+
+grant execute on function server_now() to anon;
+
+-- 2) A shared, no-repeat-until-exhausted Pictionary word rotation. The
+--    word list itself (and each word's accepted alternates) lives in
+--    pictionary-words.js so it's easy to edit. This table only remembers
+--    which words have already been used, team-wide. The browser passes in
+--    the full current list; the function picks `how_many` words that
+--    haven't been used yet, and starts over once everything has been used.
+create table if not exists pictionary_pool (
+  id integer primary key default 1 check (id = 1),
+  used text[] not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+insert into pictionary_pool (id) values (1) on conflict (id) do nothing;
+
+alter table pictionary_pool enable row level security;
+
+drop policy if exists "Allow anonymous read" on pictionary_pool;
+create policy "Allow anonymous read"
+  on pictionary_pool for select
+  using (true);
+
+create or replace function pick_pictionary_words(candidates text[], how_many integer)
+returns text[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  used_now text[];
+  fresh text[];
+  picked text[] := '{}';
+  w text;
+begin
+  if candidates is null or array_length(candidates, 1) is null or how_many < 1 then
+    return picked;
+  end if;
+
+  select used into used_now from pictionary_pool where id = 1 for update;
+  if used_now is null then used_now := '{}'; end if;
+
+  for i in 1..how_many loop
+    select array_agg(c) into fresh
+    from unnest(candidates) as c
+    where not (c = any(used_now)) and not (c = any(picked));
+
+    if fresh is null then
+      -- Everything in the current list has been used: start a new cycle
+      -- (still avoiding repeats inside this one game).
+      used_now := '{}';
+      select array_agg(c) into fresh
+      from unnest(candidates) as c
+      where not (c = any(picked));
+    end if;
+
+    exit when fresh is null;
+    w := fresh[1 + floor(random() * array_length(fresh, 1))::int];
+    picked := array_append(picked, w);
+    used_now := array_append(used_now, w);
+  end loop;
+
+  update pictionary_pool set used = used_now, updated_at = now() where id = 1;
+  return picked;
+end;
+$$;
+
+grant execute on function pick_pictionary_words(text[], integer) to anon;
