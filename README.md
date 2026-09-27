@@ -108,7 +108,9 @@ keep doing the same:
   drawer alternates (3 each), 100 seconds per round. The guesser earns the
   seconds left on the clock when they guess right, the drawer earns half
   that. Drawing syncs live; guesses show in a feed; near misses get a
-  private "close!" hint. Unlike Memory/Wordle, a Pictionary game keeps
+  private "close!" hint. The drawer can hit "🔄 New word" once per turn
+  (clock keeps running, no point penalty, everyone's canvas clears, and
+  the skipped word goes back into the rotation). Unlike Memory/Wordle, a Pictionary game keeps
   going when the break ends (players close it when done).
 - **Super Challenge (host only)**: group Pictionary for everyone on break.
   Only a browser that has opened the private host link sees the button

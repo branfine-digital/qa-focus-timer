@@ -202,6 +202,7 @@
   const pictEraserBtn = document.getElementById("pict-eraser-btn");
   const pictUndoBtn = document.getElementById("pict-undo-btn");
   const pictClearBtn = document.getElementById("pict-clear-btn");
+  const pictSwapBtn = document.getElementById("pict-swap-btn");
   const pictGuessForm = document.getElementById("pict-guess-form");
   const pictGuessInput = document.getElementById("pict-guess-input");
   const pictScores = document.getElementById("pict-scores");
@@ -1857,6 +1858,57 @@
     }
   });
 
+  // ---------- Pictionary: swap word ----------
+  //
+  // The drawer can trade their word for a different one once per turn.
+  // The clock keeps running and there's no point penalty. The skipped word
+  // goes back into the team-wide rotation (swap_pictionary_word in
+  // supabase-schema.sql); everyone's canvas clears (see onPictRowChanged).
+  let pictSwapInFlight = false;
+
+  async function pickSwapWord(g, skipped) {
+    const exclude = g.state.words.slice();
+    const local = () => {
+      const pool = PICT_WORD_KEYS.filter((k) => exclude.indexOf(k) === -1);
+      return pool.length ? pickRandom(pool) : null;
+    };
+    if (isPreviewRow(g) || IS_PREVIEW_BUILD) return local(); // don't touch the real rotation while testing
+    try {
+      const { data, error } = await sb.rpc("swap_pictionary_word", { candidates: PICT_WORD_KEYS, skipped, exclude });
+      if (error || !data) throw error || new Error("swap_pictionary_word returned nothing");
+      return String(data);
+    } catch (e) {
+      console.error("swap_pictionary_word RPC unavailable, picking locally:", e);
+      return local();
+    }
+  }
+
+  async function swapPictWord() {
+    const g = activeGame;
+    if (!g || !isPictType(g.type) || g.status !== "active" || pictSwapInFlight) return;
+    const s = g.state;
+    const round = s.round;
+    const old = s.words[round];
+    if (s.phase !== "drawing" || s.drawers[round] !== myClientId || (s.swaps || []).indexOf(round) !== -1) return;
+    if (serverNow() >= s.roundStart + PICT_ROUND_MS) return;
+    pictSwapInFlight = true;
+    pictSwapBtn.disabled = true;
+    const next = await pickSwapWord(g, old);
+    if (next) {
+      await pictCommit(activeGame && activeGame.id === g.id ? activeGame : g, (st, r) => {
+        if (r.status !== "active" || st.phase !== "drawing" || st.round !== round || st.words[round] !== old) return null;
+        if ((st.swaps || []).indexOf(round) !== -1 || serverNow() >= st.roundStart + PICT_ROUND_MS) return null;
+        st.words[round] = next;
+        st.swaps = (st.swaps || []).concat([round]);
+        return { state: st };
+      });
+    }
+    pictSwapInFlight = false;
+    if (activeGame && isPictType(activeGame.type) && activeGame.status === "active") renderActiveGame();
+  }
+
+  pictSwapBtn.addEventListener("click", swapPictWord);
+
   // Points = seconds left on the clock for the guesser, half that for the
   // drawer. First correct guess ends the round.
   function claimPictRound(row, playerId, round) {
@@ -1973,6 +2025,15 @@
     if (row.status !== "active" || !s || !s.drawers) return;
     const newRound = !p || p.round !== s.round || (p.phase !== "drawing" && s.phase === "drawing");
     if (newRound && s.phase === "drawing" && s.drawers[s.round] === myClientId) playChallengeSound();
+    const swapped = p && p.round === s.round && s.phase === "drawing" && p.words && p.words[s.round] !== s.words[s.round];
+    if (swapped) {
+      // New word, fresh canvas for everyone.
+      endMyStroke();
+      pictDraw.strokes = [];
+      redrawPict();
+      const drawer = s.drawers[s.round];
+      addPictFeed(drawer === myClientId ? "🔄 You swapped to a new word" : "🔄 " + pictName(row, drawer) + " swapped their word", "system");
+    }
     if (p && p.round === s.round && p.phase === "drawing" && s.phase === "reveal") {
       const h = s.history[s.history.length - 1];
       if (h && h.winner) {
@@ -2227,6 +2288,9 @@
     }
 
     pictTools.hidden = !(inPlay && amDrawer && s.phase === "drawing");
+    const swappedThisRound = (s.swaps || []).indexOf(s.round) !== -1;
+    pictSwapBtn.disabled = swappedThisRound || pictSwapInFlight;
+    pictSwapBtn.textContent = swappedThisRound ? "🔄 Word swapped" : "🔄 New word";
     const showGuess = inPlay && amPlayer && !amDrawer && s.phase === "drawing";
     pictGuessForm.hidden = !showGuess;
     if (showGuess && pictGuessWasHidden) setTimeout(() => pictGuessInput.focus(), 0);

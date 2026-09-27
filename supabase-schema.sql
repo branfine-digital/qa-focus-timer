@@ -275,3 +275,43 @@ end;
 $$;
 
 grant execute on function pick_pictionary_words(text[], integer) to anon;
+
+-- Added later: Pictionary "New word" button. The drawer can swap their
+-- word once per turn; the skipped word goes back into the rotation (it's
+-- removed from `used`) and a fresh one is picked, avoiding every word
+-- already in this game (`exclude`). Safe to re-run.
+create or replace function swap_pictionary_word(candidates text[], skipped text, exclude text[])
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  used_now text[];
+  fresh text[];
+  w text;
+begin
+  select used into used_now from pictionary_pool where id = 1 for update;
+  if used_now is null then used_now := '{}'; end if;
+  used_now := array_remove(used_now, skipped);
+
+  select array_agg(c) into fresh
+  from unnest(candidates) as c
+  where not (c = any(used_now)) and not (c = any(coalesce(exclude, '{}'))) and c is distinct from skipped;
+
+  if fresh is null then
+    used_now := '{}';
+    select array_agg(c) into fresh
+    from unnest(candidates) as c
+    where not (c = any(coalesce(exclude, '{}'))) and c is distinct from skipped;
+  end if;
+
+  if fresh is null then return null; end if;
+  w := fresh[1 + floor(random() * array_length(fresh, 1))::int];
+  used_now := array_append(used_now, w);
+  update pictionary_pool set used = used_now, updated_at = now() where id = 1;
+  return w;
+end;
+$$;
+
+grant execute on function swap_pictionary_word(text[], text, text[]) to anon;
