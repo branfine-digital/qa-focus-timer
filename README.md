@@ -24,8 +24,13 @@ re-run: `create table if not exists`, `create or replace function`, etc.).
 1. Supabase project → **SQL Editor** → **New query**.
 2. Paste the entire contents of `supabase-schema.sql` and click **Run**.
 3. Confirm in **Table Editor**: `timer_state` (one row, id = 1), `games`,
-   and `wordle_pool` (one row, id = 1, with a 100-word `all_words` array)
-   all exist.
+   `wordle_pool` (one row, id = 1, with a 100-word `all_words` array), and
+   `pictionary_pool` (one row, id = 1) all exist.
+
+   Tip: the very first statements in the file (the original
+   `alter publication ... add table timer_state`) error if run a second
+   time. When only a new section has been appended, it's simplest to paste
+   and run just that section (each one is marked "Added later: ...").
 4. Confirm in **Database → Replication**: `timer_state` and `games` are
    both listed under the `supabase_realtime` publication. The SQL does
    this automatically, but it's worth a glance, since without it, changes
@@ -99,6 +104,26 @@ keep doing the same:
   shared word, challenger guesses first, turns alternate). Both players
   can request a rematch after a game ends. See "Known limitations" below
   for the trust assumptions these make.
+- **Pictionary (1v1)**: challenge a teammate with "✏️ Draw". 6 rounds,
+  drawer alternates (3 each), 100 seconds per round. The guesser earns the
+  seconds left on the clock when they guess right, the drawer earns half
+  that. Drawing syncs live; guesses show in a feed; near misses get a
+  private "close!" hint. The drawer can hit "🔄 New word" once per turn
+  (clock keeps running, no point penalty, everyone's canvas clears, and
+  the skipped word goes back into the rotation). Unlike Memory/Wordle, a Pictionary game keeps
+  going when the break ends (players close it when done).
+- **Super Challenge (host only)**: group Pictionary for everyone on break.
+  Only a browser that has opened the private host link sees the button
+  (the key is not in this repo; only its SHA-256 hash is, in `app.js`).
+  Everyone else gets a 30 second invite to Join or Skip; the host can hit
+  Start early. Everyone who joined draws once, in random order. First
+  correct guess wins the round (seconds left for the guesser, half for the
+  drawer), most points at the end wins. If someone leaves, their drawing
+  turn is skipped. The host's Close button ends it for everyone.
+- **Pictionary words**: `pictionary-words.js`, one line per word with its
+  accepted alternates (monkey: ape, orangutan...). Plurals, capitalization,
+  "a/the", spaces, and a single typo on 5+ letter words are handled
+  automatically. Words rotate team-wide with no repeats until all are used.
 - **Presence**: anyone with the tab open shows up as a bubble, for as
   long as the tab stays open, regardless of activity.
 - **Sounds**: synthesized in-browser with the Web Audio API, no audio
@@ -117,14 +142,29 @@ worth knowing about before extending this further:
   UI just disables the controls when it isn't your turn.
 - Wordle guesses are only checked for being 5 letters, not against a
   dictionary.
+- Same for Pictionary: the current word is in the game row, so it's
+  visible in devtools, and correct answers are checked in the guesser's
+  browser.
+- Pictionary drawings are sent as realtime broadcast messages, not stored.
+  Someone who reloads mid-round gets the drawing re-sent by the others in
+  the game; if nobody else is left, it's gone for that round.
+- The Pictionary host key lives in the host's browser (localStorage). A
+  new browser or cleared site data needs the host link opened once again.
 - The "test bot" opponent (Rally) only ever appears on a Netlify Deploy
   Preview or `localhost`, never on the production domain, so it can't be
-  challenged by real teammates by mistake.
+  challenged by real teammates by mistake. In Pictionary, Rally scribbles
+  random shapes when it's drawing and the word is shown on screen
+  (preview only) so the guessing flow can be tested solo. On a preview,
+  a Super Challenge fills its lobby with four test bots (Rally, Pixel,
+  Doodle, Scribbles) that join, draw, and guess on their own, so a full
+  group game can be simulated solo. It never invites anyone on the
+  production site.
 
 ## Files
 
 - `index.html`, `style.css`, `app.js`: the app.
 - `config.js`: Supabase project URL + anon key.
+- `pictionary-words.js`: the Pictionary word list and accepted alternates.
 - `supabase-schema.sql`: full database setup, run top to bottom (see
   "Database setup" above). Each addition is commented with when/why it
   was added.
