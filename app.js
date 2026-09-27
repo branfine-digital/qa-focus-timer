@@ -1345,9 +1345,10 @@
   }
 
   function pictName(row, id) {
-    if (id === TEST_BOT_ID) return TEST_BOT_EMOJI + " " + TEST_BOT_NAME;
     const p = ((row.state && row.state.players) || []).find((x) => x.id === id);
-    return p ? p.name : "Someone";
+    if (p) return p.name;
+    if (id === TEST_BOT_ID) return TEST_BOT_EMOJI + " " + TEST_BOT_NAME;
+    return "Someone";
   }
 
   function buildPictState(players, words) {
@@ -1914,7 +1915,7 @@
   }
 
   function drawerGone(g, drawer) {
-    if (drawer === myClientId || drawer === TEST_BOT_ID) return false;
+    if (drawer === myClientId || isBotId(drawer)) return false;
     if ((g.state.left || []).indexOf(drawer) !== -1) return true;
     if (!hasReceivedInitialPresenceSync) return false;
     if (presentPeople[drawer]) { drawerMissingSince = null; return false; }
@@ -2002,47 +2003,89 @@
     } catch (e) { /* audio not unlocked yet, ignore */ }
   }
 
-  // ---------- Pictionary: test bot (Deploy Preview / localhost only) ----------
+  // ---------- Pictionary: test bots (Deploy Preview / localhost only) ----------
   //
-  // The challenger's (or host's) own browser plays for Rally: when Rally
-  // is drawing it scribbles random shapes (and the word is shown to you,
-  // preview only, so you can test a correct guess); when you're drawing it
-  // throws out wrong guesses and usually gets it right eventually.
+  // The challenger's (or host's) own browser plays for the bots: Rally in
+  // a 1v1, and a whole crew of bots in a Super Challenge so a full group
+  // game can be simulated solo. A drawing bot scribbles random shapes (and
+  // its word is shown to you, preview only, so you can test guessing it);
+  // guessing bots throw out wrong guesses, sometimes get "close", and some
+  // of them eventually get it right, at different speeds.
+
+  const SUPER_TEST_BOTS = [
+    { id: TEST_BOT_ID, name: TEST_BOT_EMOJI + " " + TEST_BOT_NAME },
+    { id: "test-bot-2", name: "🦉 Pixel" },
+    { id: "test-bot-3", name: "🐢 Doodle" },
+    { id: "test-bot-4", name: "🦝 Scribbles" },
+  ];
+
+  function isBotId(id) { return typeof id === "string" && (id === TEST_BOT_ID || id.indexOf("test-bot-") === 0); }
 
   function runPictBot(g) {
     const s = g.state;
-    if (!s.players.some((p) => p.id === TEST_BOT_ID) || g.player1_id !== myClientId) return;
+    const bots = s.players.filter((p) => isBotId(p.id));
+    if (!bots.length || g.player1_id !== myClientId) return;
     const now = serverNow();
     if (now < s.roundStart) return;
     const key = g.id + ":" + s.round;
     if (!pictBotPlan || pictBotPlan.key !== key) {
-      pictBotPlan = {
-        key,
-        nextAt: now + 1200,
-        correctAt: Math.random() < 0.75 ? now + 12000 + Math.random() * 40000 : null,
-        shapes: 0,
-      };
+      // More bots guessing = each one a bit less likely to get it, so a
+      // human guesser still has a real shot in a Super Challenge.
+      const correctChance = bots.length > 1 ? 0.45 : 0.75;
+      pictBotPlan = { key, shapes: 0, nextShapeAt: now + 1200, bots: {} };
+      bots.forEach((b) => {
+        pictBotPlan.bots[b.id] = {
+          nextAt: now + 2500 + Math.random() * 6000,
+          correctAt: Math.random() < correctChance ? now + 15000 + Math.random() * 60000 : null,
+        };
+      });
     }
     const plan = pictBotPlan;
-    if (s.drawers[s.round] === TEST_BOT_ID) {
-      if (plan.shapes < 9 && now >= plan.nextAt) {
-        plan.shapes++;
-        plan.nextAt = now + 1500 + Math.random() * 1500;
-        botDrawShape();
+    const drawer = s.drawers[s.round];
+
+    if (isBotId(drawer) && plan.shapes < 9 && now >= plan.nextShapeAt) {
+      plan.shapes++;
+      plan.nextShapeAt = now + 1500 + Math.random() * 1500;
+      botDrawShape();
+    }
+
+    const word = s.words[s.round];
+    bots.forEach((b) => {
+      if (b.id === drawer) return;
+      const bp = plan.bots[b.id];
+      if (!bp) return;
+      if (bp.correctAt && now >= bp.correctAt) {
+        bp.correctAt = null;
+        claimPictRound(g, b.id, s.round);
+      } else if (now >= bp.nextAt) {
+        bp.nextAt = now + 7000 + Math.random() * 8000;
+        if (Math.random() < 0.15) {
+          addPictFeed("🔥 " + b.name + " is close!", "close");
+          sendPict({ kind: "close", name: b.name });
+        } else {
+          const wrong = pickRandom(PICT_WORD_KEYS.filter((w) => w !== word));
+          addPictFeed(b.name + ": " + wrong, "guess");
+          sendPict({ kind: "guess", name: b.name, text: wrong });
+        }
       }
-      return;
-    }
-    // Rally is guessing (in a Super Challenge, only when someone else is drawing).
-    if (plan.correctAt && now >= plan.correctAt) {
-      plan.correctAt = null;
-      claimPictRound(g, TEST_BOT_ID, s.round);
-    } else if (now >= plan.nextAt) {
-      plan.nextAt = now + 6000 + Math.random() * 6000;
-      const wrong = pickRandom(PICT_WORD_KEYS.filter((w) => w !== s.words[s.round]));
-      const name = TEST_BOT_EMOJI + " " + TEST_BOT_NAME;
-      addPictFeed(name + ": " + wrong, "guess");
-      sendPict({ kind: "guess", name, text: wrong });
-    }
+    });
+  }
+
+  // Preview-only: bots trickle into a Super Challenge lobby over the first
+  // few seconds, like teammates hitting Join.
+  function runLobbyBots(g) {
+    if (!IS_PREVIEW_BUILD || g.player1_id !== myClientId) return;
+    const s = g.state;
+    const elapsed = serverNow() - (s.joinDeadline - SUPER_JOIN_WINDOW_MS);
+    const inIds = new Set(s.players.map((p) => p.id));
+    SUPER_TEST_BOTS.forEach((b, i) => {
+      if (inIds.has(b.id) || elapsed < 1500 + i * 1800) return;
+      pictTry("botjoin:" + g.id + ":" + b.id, () => pictCommit(g, (st, r) => {
+        if (r.status !== "pending" || st.players.some((p) => p.id === b.id)) return null;
+        st.players.push({ id: b.id, name: b.name });
+        return { state: st };
+      }));
+    });
   }
 
   function botDrawShape() {
@@ -2108,7 +2151,7 @@
       if (amDrawer) prompt = "Draw: " + word.toUpperCase();
       else {
         prompt = wordBlanks(word) + "   (" + word.replace(/ /g, "").length + " letters)";
-        if (drawer === TEST_BOT_ID) prompt += "   [preview only, Rally's word: " + word + "]";
+        if (isBotId(drawer)) prompt += "   [preview only, bot's word: " + word + "]";
       }
     }
     pictTimer.textContent = secsText;
@@ -2260,7 +2303,6 @@
     superChallengeBtn.disabled = true;
     const myName = identity.emoji + " " + identity.name;
     const players = [{ id: myClientId, name: myName }];
-    if (IS_PREVIEW_BUILD) players.push({ id: TEST_BOT_ID, name: TEST_BOT_EMOJI + " " + TEST_BOT_NAME });
     const row = {
       type: "pictionary_group",
       status: "pending",
@@ -2399,6 +2441,7 @@
   });
 
   function tickGroupLobby(g) {
+    runLobbyBots(g);
     const s = g.state;
     const left = Math.ceil((s.joinDeadline - serverNow()) / 1000);
     const amHost = g.player1_id === myClientId;

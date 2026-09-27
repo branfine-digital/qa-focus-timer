@@ -152,9 +152,11 @@ worth knowing about before extending this further:
   Preview or `localhost`, never on the production domain, so it can't be
   challenged by real teammates by mistake. In Pictionary, Rally scribbles
   random shapes when it's drawing and the word is shown on screen
-  (preview only) so the guessing flow can be tested solo. A Super
-  Challenge started on a preview automatically includes Rally and never
-  invites anyone on the production site.
+  (preview only) so the guessing flow can be tested solo. On a preview,
+  a Super Challenge fills its lobby with four test bots (Rally, Pixel,
+  Doodle, Scribbles) that join, draw, and guess on their own, so a full
+  group game can be simulated solo. It never invites anyone on the
+  production site.
 
 ## Files
 
