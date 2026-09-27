@@ -1,62 +1,131 @@
-# QA Focus Timer
+# Focus Sprint Timer
 
-A shared, real-time focus/break timer for the team — a replacement for Cuckoo.
-One URL, everyone joins with a name + emoji, sees who else is in the room, and
-shares one countdown timer that anyone can start.
+A shared, real-time focus/break timer for the QA team, built to replace Cuckoo
+(a defunct tool the team used to use). One permanent URL, everyone joins with
+a name and emoji, sees who else is in the room, and shares one countdown
+timer that anyone can start or end early.
 
-Plain HTML/CSS/JS — no build step, no npm install needed. The only backend is
-Supabase (already created: project `qa-focus-timer`).
+Plain HTML/CSS/JS, no build step, no npm install needed. The backend is
+Supabase (project `qa-focus-timer`), and hosting is Netlify.
 
-## 1. Run the database setup (one time)
+## Repo, hosting, and database (for reference)
 
-1. Go to your Supabase project → **SQL Editor** → **New query**.
+- GitHub: `branfine-digital/qa-focus-timer`
+- Production URL: `https://qasprinttimer.netlify.app`
+- Netlify site: connected to the GitHub repo above, auto-deploys `main`
+- Supabase project: `qa-focus-timer` (URL and anon key are in `config.js`)
+
+## 1. Database setup (Supabase)
+
+One-time setup, and also what to run again any time `supabase-schema.sql`
+gets new statements appended to it (each addition is written to be safe to
+re-run: `create table if not exists`, `create or replace function`, etc.).
+
+1. Supabase project → **SQL Editor** → **New query**.
 2. Paste the entire contents of `supabase-schema.sql` and click **Run**.
-3. Go to **Table Editor** and confirm you see a `timer_state` table with one row (id = 1, mode = idle).
-4. Go to **Database → Replication** (or **Database → Publications**) and confirm `timer_state` is listed under the `supabase_realtime` publication. The SQL script does this automatically, but it's worth a quick look — if it's missing, live updates won't reach other browsers.
+3. Confirm in **Table Editor**: `timer_state` (one row, id = 1), `games`,
+   and `wordle_pool` (one row, id = 1, with a 100-word `all_words` array)
+   all exist.
+4. Confirm in **Database → Replication**: `timer_state` and `games` are
+   both listed under the `supabase_realtime` publication. The SQL does
+   this automatically, but it's worth a glance, since without it, changes
+   won't reach other browsers in real time.
 
-`config.js` already has your project's URL and anon public key wired in, so no other Supabase setup is needed. (The anon key is meant to be public/embedded in client code — access is controlled by the Row Level Security policies in `supabase-schema.sql`, not by hiding this key.)
+`config.js` already has the project URL and anon public key wired in. The
+anon key is meant to be public, embedded client-side code. Access control
+is entirely via the Row Level Security policies in `supabase-schema.sql`,
+not by hiding this key.
 
 ## 2. Push to GitHub
 
-This folder is already a git repo with everything committed, so you just need to
-create an empty repo on GitHub and point this one at it.
+Already set up for this repo. For a brand new clone of this project:
 
-1. Go to github.com (signed in) and click the **+** in the top-right corner → **New repository**.
-2. Give it a name, e.g. `qa-focus-timer`. Public or private is up to you.
-3. Leave every checkbox unchecked — **do not** add a README, .gitignore, or license. This folder already has those files, and checking them creates a conflict when you push.
-4. Click **Create repository**.
-5. GitHub will show you a repo URL like `https://github.com/<your-username>/qa-focus-timer.git` — copy it.
-6. In Terminal, run:
+1. `git remote add origin https://github.com/branfine-digital/qa-focus-timer.git`
+2. `git push -u origin main`
+
+Pushing (from any branch) needs a GitHub personal access token (classic,
+`repo` scope) used inline in the push URL, e.g.:
 
 ```
-cd ~/Documents/Timer
-git remote add origin https://github.com/<your-username>/qa-focus-timer.git
-git branch -M main
-git push -u origin main
+git push https://<token>@github.com/branfine-digital/qa-focus-timer.git main
 ```
 
-If this is the first time you've pushed from this Mac, Git may open a browser window asking you to sign in and authorize — that's normal, approve it and the push will continue.
+Never commit a token or save it into `git config`. Generate one at
+GitHub → Settings → Developer settings → Personal access tokens, use it
+for the push, and it can be revoked/regenerated any time.
 
-## 3. Deploy on Netlify
+## 3. Netlify
 
-1. In Netlify: **Add new site → Import an existing project → Deploy with GitHub**, and pick this repo.
-2. Build settings: leave the build command **blank** and set the publish directory to `.` (this repo has no build step — `netlify.toml` already sets this for you, so Netlify should pick it up automatically).
-3. Deploy. Netlify will give you a URL like `random-words-123abc.netlify.app`.
-4. In **Site settings → Domain management → Options → Edit site name**, change it to something short but *not* obviously guessable (e.g. `qa-focus-8x2k` rather than `qa-team-timer`) — this is the "unguessable slug" approach we talked about instead of a login system. Your team's permanent URL becomes `https://qa-focus-8x2k.netlify.app` (or whatever you pick).
+Already deployed and connected to this repo's `main` branch (auto-deploys
+on every push to `main`). Build command is blank, publish directory is
+`.` (see `netlify.toml`), since this is a static site with no build step.
 
-That URL never changes going forward — bookmark it and share it with the team.
+## Making changes (development workflow)
 
-## How it works
+Every change so far has followed this pattern, and new sessions should
+keep doing the same:
 
-- **Presence** (who's in the room) uses Supabase Realtime's presence feature — no database table, it just tracks who currently has a connection open.
-- **The timer** lives in one row of the `timer_state` table. Starting a timer writes the end time to that row; Supabase Realtime pushes the change to every connected browser instantly, and each browser counts down to that same timestamp so everyone stays in sync (not just independently counting down, which would drift).
-- **Sounds** are synthesized in the browser with the Web Audio API — no sound files to host. A soft two-note chime plays (and repeats) when a timer ends, and a quieter blip plays when someone else joins the room.
-- **When a timer ends**, every browser shows a full-screen "Time's up!" state and plays the chime on a loop. Anyone clicking anywhere resets the shared room state, which every browser picks up — the whole room drops back to the picker at the same time, with the duration bubbles animating back in.
-- **Your name/emoji** are remembered in your browser (localStorage) and pre-filled on your next visit — you'll still see one "Continue" click before entering, which is intentional: browsers require a click somewhere on the page before they'll let a site play audio, so that click is what unlocks the chime/join sounds for your session. To switch identity, clear your browser's site data for this URL, or ask and I can add a "change identity" button.
+1. Branch off `main`: `git checkout -b feature/<short-name>`
+2. Make the change, commit, push the branch to GitHub.
+3. Open a pull request from that branch into `main` (GitHub UI or API).
+   This triggers a Netlify **Deploy Preview** at
+   `https://deploy-preview-<PR#>--qasprinttimer.netlify.app`, a fully
+   working copy of the site on its own URL, pointed at the *same*
+   Supabase project as production.
+4. Share the preview URL and get it approved before merging. Since the
+   preview shares production's database, a schema change (new table,
+   new column) needs its SQL run in Supabase before the preview can use
+   it, same as production would.
+5. Once approved, merge the PR into `main`. Netlify auto-deploys
+   production within a minute or two of the merge. If it doesn't, an
+   empty commit pushed to `main` (`git commit --allow-empty -m "..."`)
+   will nudge Netlify to retry.
+6. Never push a change directly to `main` without a preview step first,
+   except trivial copy/doc changes (like this README) that carry no risk
+   to the running app.
+
+## Features
+
+- **Shared timer**: work (25/45/30/10 min) and break (10/15/5 min) presets
+  plus a custom duration, open to anyone in the room to start or end early.
+- **Rotating headers**: a random fun one-liner ("Time to lock in", "Now
+  testing: your patience", etc.) replaces the plain "Work session"/"Break"
+  label each time a timer starts, same line shown to everyone.
+- **Night mode**: toggle button (top right), remembered per browser via
+  localStorage, applied before first paint so there's no flash of the
+  wrong theme on reload.
+- **Break room games**: while the room is on break, present teammates can
+  challenge each other to Memory Match or a turn-based Wordle Duel (one
+  shared word, challenger guesses first, turns alternate). Both players
+  can request a rematch after a game ends. See "Known limitations" below
+  for the trust assumptions these make.
+- **Presence**: anyone with the tab open shows up as a bubble, for as
+  long as the tab stays open, regardless of activity.
+- **Sounds**: synthesized in-browser with the Web Audio API, no audio
+  files to host. Distinct tones for timer-done, someone joining, and an
+  incoming game challenge.
+
+## Known limitations
+
+Deliberate trade-offs, reasonable for a trusted ~6-person internal tool,
+worth knowing about before extending this further:
+
+- A Wordle Duel's secret word lives in the same client-visible database
+  row as everything else in the game. A determined teammate could find
+  it early via browser devtools.
+- Nothing server-side stops a client from making a move out of turn; the
+  UI just disables the controls when it isn't your turn.
+- Wordle guesses are only checked for being 5 letters, not against a
+  dictionary.
+- The "test bot" opponent (Rally) only ever appears on a Netlify Deploy
+  Preview or `localhost`, never on the production domain, so it can't be
+  challenged by real teammates by mistake.
 
 ## Files
 
-- `index.html`, `style.css`, `app.js` — the app
-- `config.js` — your Supabase project URL + anon key
-- `supabase-schema.sql` — one-time database setup (see step 1)
-- `netlify.toml` — tells Netlify this is a static site with no build step
+- `index.html`, `style.css`, `app.js`: the app.
+- `config.js`: Supabase project URL + anon key.
+- `supabase-schema.sql`: full database setup, run top to bottom (see
+  "Database setup" above). Each addition is commented with when/why it
+  was added.
+- `netlify.toml`: tells Netlify this is a static site with no build step.
